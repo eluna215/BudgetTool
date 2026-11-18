@@ -40,6 +40,8 @@ catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
 .seg.theme button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 * { box-sizing: border-box; }
+/* "hidden" must always win: layout rules like .block { display:flex } would otherwise keep a hidden panel on screen */
+[hidden] { display: none !important; }
 body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.5;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 56px; }
 .wrap { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
@@ -221,6 +223,15 @@ label.field.big input { font-weight: 700; font-size: 1.05rem; }
 .subtabs .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 0.72rem; text-align: center; margin-left: 4px; }
 .subtabs button[aria-selected="true"] .count { background: var(--accent-soft); color: var(--accent); }
 .listtools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px); gap: 8px; }
+/* search + filter, the count line and the scrolling list sit together in one box */
+.seg.logkind { grid-column: 1 / -1; justify-self: start; }
+.seg.logkind button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.seg.logkind button[data-logkind="income"][aria-pressed="true"] { background: var(--pos); border-color: var(--pos); color: var(--surface); }
+.listbox { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); overflow: hidden; }
+.listbox .listtools { padding: 10px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.listbox .listhead { padding: 6px 12px 0; }
+.listbox .listhead:has(span:empty) { display: none; }
+.listbox .itemlist { border: 0; border-radius: 0; }
 .listhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.8rem; color: var(--muted); }
 .catstrip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .catbox { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -311,7 +322,7 @@ dialog#colorDlg::backdrop { background: rgba(0,0,0,.35); }
 .colorrow .sample { margin-left: auto; font-size: 0.72rem; padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
 .pill.bill.done { text-decoration: line-through; }
 .pill.inc { background: var(--pos-soft); color: var(--pos); font-weight: 600; }
-.pill.sp { color: var(--spent); padding-left: 0; }
+.pill.sp { color: var(--ink); background: color-mix(in srgb, var(--spent) 18%, var(--surface)); box-shadow: inset 3px 0 0 var(--spent); }
 .cal .wsum { padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); display: flex; flex-direction: column; gap: 1px; font-size: 0.78rem; font-variant-numeric: tabular-nums; cursor: pointer; }
 .cal .wsum b { font-size: 0.9rem; }
 .cal .wsum b.neg { color: var(--neg); }
@@ -443,6 +454,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         </div>
         <div class="block" id="pane-bills" role="tabpanel" aria-labelledby="st-bills">
           <form class="itemform" id="form-bills" autocomplete="off"></form>
+          <div class="listbox">
           <div class="listtools">
             <input type="search" id="q-bills" placeholder="Search payments" aria-label="Search payments">
             <select id="f-bills" aria-label="Filter payments">
@@ -457,10 +469,12 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
           </div>
           <div class="listhead"><span id="info-bills"></span></div>
           <div class="itemlist" id="list-bills" tabindex="0" aria-label="Your bills and payments"></div>
+          </div>
         </div>
         <div class="block" id="pane-incomes" role="tabpanel" aria-labelledby="st-incomes" hidden>
           <p class="small muted">Money on top of your weekly pay: overtime, a side job, a bonus, tips. Make it one time or repeating.</p>
           <form class="itemform" id="form-incomes" autocomplete="off"></form>
+          <div class="listbox">
           <div class="listtools">
             <input type="search" id="q-incomes" placeholder="Search income" aria-label="Search income">
             <select id="f-incomes" aria-label="Filter income">
@@ -476,6 +490,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
           </div>
           <div class="listhead"><span id="info-incomes"></span></div>
           <div class="itemlist" id="list-incomes" tabindex="0" aria-label="Your other income"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -718,15 +733,18 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
       const occ = { kind, bill: v, item: v, date, d, key, moved, from: from || date, edited: !!(o && (o.name || o.amount != null)) || !!it.edited };
       if (o && o.skip) skipped.push(occ); else (kind === 'bills' ? payments : extras).push(occ);
     };
+    // nothing before the starting day exists: no pay, payments, income or spending is shown or counted
+    const st0 = state.settings.payday || '';
     for (let i = 0; i < n; i++) {
       const d = addDays(start, i), di = iso(d);
+      if (st0 && di < st0) continue;
       if (isPayday(d)) paydays++;
       for (const b of state.settings.bills) if (dueOn(b, d) && !mv[b.id + '@' + di]) add('bills', b, di, b.id + '@' + di, false);
       for (const x of state.settings.incomes) if (dueOn(x, d) && !mv[x.id + '@' + di]) add('incomes', x, di, x.id + '@' + di, false);
     }
     // occurrences of repeating items that were moved to another day
     for (const [key, to] of Object.entries(mv)) {
-      if (to < s || to > e) continue;
+      if (to < s || to > e || (st0 && to < st0)) continue;
       const at = key.lastIndexOf('@'), id = key.slice(0, at), from = key.slice(at + 1);
       const b = state.settings.bills.find(x => x.id === id);
       if (b) { if (dueOn(b, parse(from))) add('bills', b, to, key, true, from); continue; }
@@ -735,7 +753,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     }
     const byDate = (a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
     payments.sort(byDate); extras.sort(byDate); skipped.sort(byDate);
-    const exps = state.expenses.filter(x => x.date >= s && x.date <= e)
+    const exps = state.expenses.filter(x => x.date >= s && x.date <= e && (!st0 || x.date >= st0))
       .sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0));
     const pay = round2((+state.settings.weeklyPay || 0) * paydays);
     const extra = sum(extras, x => x.item.amount);
@@ -768,6 +786,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     async saveSettings() { this.persist(); },
     async add(kind, x) { state[kind].push({ id: uid(), ...x }); this.persist(); render(); },
     async remove(kind, id) { state[kind] = state[kind].filter(x => x.id !== id); this.persist(); render(); },
+    async update(kind, id, patch) { const x = state[kind].find(y => y.id === id); if (x) Object.assign(x, patch); this.persist(); render(); },
   };
 
   function dbBackend(db, id) {
@@ -798,6 +817,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
       saveSettings(s) { return sref.set(JSON.parse(JSON.stringify(s))); },
       async add(kind, x) { await cols[kind].add(x); },
       async remove(kind, id) { await cols[kind].doc(id).delete(); },
+      async update(kind, id, patch) { await cols[kind].doc(id).update(patch); },
     };
   }
 
@@ -830,7 +850,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
   // ---------- render ----------
   function render() {
-    resetCum();
+    resetCum(); clampNav();
     $('#tab-week').textContent = isWeekly() ? 'Week' : 'Pay period';
     for (const v of ['week', 'month', 'year', 'dashboard']) { const a = $('#tab-' + v); if (v === state.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
     renderSetup(); renderList('bills'); renderList('incomes'); updateQSum();
@@ -1014,7 +1034,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
       <div class="panel-head">
         <div><p class="eyebrow">Money left over</p><h2>Left over, added up</h2>
           <p class="sub">What's left after payments and spending, totaled by week, month and year.</p></div>
-        <div class="seg"><button type="button" data-act="yr" data-n="-1" aria-label="Previous year">‹</button><button type="button" data-act="yrNow" ${Y === t.getFullYear() ? 'disabled' : ''}>${Y}</button><button type="button" data-act="yr" data-n="1" aria-label="Next year">›</button></div>
+        <div class="seg"><button type="button" data-act="yr" data-n="-1" aria-label="Previous year" ${startDay() && Y <= startDay().getFullYear() ? 'disabled title="Before your starting day"' : ''}>‹</button><button type="button" data-act="yrNow" ${Y === t.getFullYear() ? 'disabled' : ''}>${Y}</button><button type="button" data-act="yr" data-n="1" aria-label="Next year">›</button></div>
       </div>
       <div class="stats">
         ${tile(isWeekly() ? 'This pay week' : 'This pay period',`${short(cw.start)} – ${short(cw.end)}`, cw.left)}
@@ -1089,8 +1109,18 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   // "Nov 6 – 12" or "Oct 30 – Nov 5"
   const spanTxt = (a, b) => a.getMonth() === b.getMonth() ? `${short(a)} – ${b.getDate()}` : `${short(a)} – ${short(b)}`;
   // ‹ previous · this period · next › buttons, each showing its dates
-  const navSeg = (act, nowAct, isNow, prevTxt, nowTxt, nextTxt, prevAria, nextAria) => `<div class="seg nav">
-      <button type="button" data-act="${act}" data-n="-1" aria-label="${prevAria}: ${prevTxt.replace('‹ ', '')}">${prevTxt}</button>
+  // ----- the starting day is also the earliest date you can navigate to -----
+  const startDay = () => state.settings.payday ? parse(state.settings.payday) : null;
+  const monthNum = (y, m) => y * 12 + m;
+  function clampNav() {
+    const s = startDay(); if (!s) return;
+    const mp = iso(periodStartFor(s));
+    if (state.viewStart && iso(periodStartFor(parse(state.viewStart))) < mp) state.viewStart = mp;
+    if (monthNum(state.month.y, state.month.m) < monthNum(s.getFullYear(), s.getMonth())) state.month = { y: s.getFullYear(), m: s.getMonth() };
+    if (state.year < s.getFullYear()) state.year = s.getFullYear();
+  }
+  const navSeg = (act, nowAct, isNow, prevTxt, nowTxt, nextTxt, prevAria, nextAria, prevOff) => `<div class="seg nav">
+      <button type="button" data-act="${act}" data-n="-1" aria-label="${prevAria}: ${prevTxt.replace('‹ ', '')}" ${prevOff ? 'disabled title="Before your starting day"' : ''}>${prevTxt}</button>
       <button type="button" data-act="${nowAct}" ${isNow ? 'disabled aria-current="true"' : `title="Back to today" aria-label="${nowTxt}. Back to today"`}>${nowTxt}${isNow ? '' : ' <span aria-hidden="true">↺</span>'}</button>
       <button type="button" data-act="${act}" data-n="1" aria-label="${nextAria}: ${nextTxt.replace(' ›', '')}">${nextTxt}</button></div>`;
 
@@ -1100,7 +1130,9 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   function renderWeek(el) {
     const t = today(), tIso = iso(t);
     const cur = weekStartFor(t);
-    const start = state.viewStart ? periodStartFor(parse(state.viewStart)) : cur;
+    let start = state.viewStart ? periodStartFor(parse(state.viewStart)) : cur;
+    const minP = startDay() ? periodStartFor(startDay()) : null;
+    if (minP && iso(start) < iso(minP)) start = minP;   // a starting day in the future: open on its first pay period
     const w = week(start);
     const nDays = diffDays(start, w.end) + 1, pn = PN();
     const isCur = iso(start) === iso(cur), isPast = w.e < tIso;
@@ -1116,7 +1148,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     const pw = prevPeriodStart(start), nw = nextPeriodStart(start);
     const navWeek = navSeg('wk', 'wkNow', isCur,
       `‹ ${spanTxt(pw, periodEnd(pw))}`, `${isCur ? 'This ' + pn : isWeekly() ? 'Week of' : 'Pay period'} · ${spanTxt(start, w.end)}`, `${spanTxt(nw, periodEnd(nw))} ›`,
-      'Previous ' + pn, 'Next ' + pn);
+      'Previous ' + pn, 'Next ' + pn, !!minP && iso(pw) < iso(minP));
 
     const editBtn = p => `<button type="button" class="ghost" data-act="editOcc" data-kind="bills" data-id="${esc(p.bill.id)}" data-key="${esc(p.key)}" data-date="${p.date}" aria-label="Edit ${esc(p.bill.name)} on ${short(p.d)} only">Edit</button>`;
     const skippedBills = w.skipped.filter(p => p.kind === 'bills');
@@ -1145,6 +1177,16 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         <span class="what"><b>${esc(x.category)}</b>${x.note ? ' <span class="muted">· ' + esc(x.note) + '</span>' : ''}</span>
         <b class="num">${money(+x.amount)}</b>
         <button type="button" class="ghost" data-act="delExp" data-id="${esc(x.id)}" aria-label="Delete expense">✕</button></div>`;
+    // income logged from this form = one-time income items marked "logged"
+    const logIsInc = state.logKind === 'income';
+    const loggedInc = w.extras.filter(x => x.item.logged);
+    const incRow = x => `<div class="exprow inc">
+        <span class="muted">${wkday(x.d)} ${x.d.getDate()}</span>
+        <span class="what">${cdot(itemColor('incomes', x.item))}<b>${esc(x.item.name)}</b> <span class="muted">· ${incCatOf(x.item)} income</span></span>
+        <b class="num" style="color:var(--pos)">+${money(+x.item.amount)}</b>
+        <button type="button" class="ghost" data-act="delItem" data-kind="incomes" data-id="${esc(x.item.id)}" aria-label="Delete ${esc(x.item.name)}">✕</button></div>`;
+    const logRows = [...w.exps.map(x => ({ date: x.date, t: x.createdAt || 0, html: expRow(x) })), ...loggedInc.map(x => ({ date: x.date, t: x.item.loggedAt || 0, html: incRow(x) }))]
+      .sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : b.t - a.t);
 
     el.innerHTML = `
       <div class="panel-head">
@@ -1170,18 +1212,22 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
           <div>${billsHtml}</div>
         </div>
         <div class="card">
-          <div class="card-head"><h3>Spending by day</h3><span class="small muted">${money(w.spent)} total</span></div>
+          <div class="card-head"><h3>Spending &amp; income by day</h3><span class="small muted">${money(w.spent)} spent${loggedInc.length ? ' · +' + money(sum(loggedInc, x => x.item.amount)) + ' logged' : ''}</span></div>
           <div class="days" aria-label="Spending per day" style="grid-template-columns:repeat(${nDays}, minmax(0, 1fr));gap:${nDays > 14 ? 2 : nDays > 7 ? 4 : 6}px">${bars}</div>
           <form class="miniform" id="expform" autocomplete="off">
+            <div class="seg logkind wide" role="group" aria-label="What are you logging?">
+              <button type="button" data-logkind="expense" aria-pressed="${logIsInc ? 'false' : 'true'}">− Expense</button>
+              <button type="button" data-logkind="income" aria-pressed="${logIsInc ? 'true' : 'false'}">+ Income</button>
+            </div>
             <label class="field">Amount<div class="money-in"><span>$</span><input id="eAmt" type="number" inputmode="decimal" min="0.01" step="0.01" required></div></label>
-            <label class="field">Category<select id="eCat">${CATS.map(c => `<option>${c}</option>`).join('')}</select></label>
-            <label class="field">Date<input id="eDate" type="date" value="${defDate}" min="${w.s}" max="${w.e}" required></label>
-            <label class="field wide">Note (optional)<input id="eNote" maxlength="80" placeholder="Where or what"></label>
-            <button class="primary" type="submit">Log expense</button>
+            <label class="field"><span id="eCatLbl">${logIsInc ? 'Type' : 'Category'}</span><select id="eCat">${(logIsInc ? INC_CATS : CATS).map(c => `<option>${c}</option>`).join('')}</select></label>
+            <label class="field">Date<input id="eDate" type="date" value="${defDate}" min="${minP && iso(minP) > w.s ? iso(minP) : w.s}" max="${w.e}" required></label>
+            <label class="field wide"><span id="eNoteLbl">${logIsInc ? 'From (optional)' : 'Note (optional)'}</span><input id="eNote" maxlength="80" placeholder="${logIsInc ? 'Tips, refund, gift…' : 'Where or what'}"></label>
+            <button class="primary" type="submit" id="eSubmit">${logIsInc ? 'Log income' : 'Log expense'}</button>
           </form>
           <div class="tomonth">${[start, w.end].filter((d, i, a) => i === 0 || d.getMonth() !== a[0].getMonth()).map(d =>
             `<button type="button" data-act="openMonth" data-y="${d.getFullYear()}" data-m="${d.getMonth()}"><span aria-hidden="true">▦</span> See ${fmtD(d, { month: 'long', year: 'numeric' })} in Month view</button>`).join('')}</div>
-          <div>${w.exps.length ? w.exps.map(expRow).join('') : `<p class="empty">Nothing logged yet this ${pn}.</p>`}</div>
+          <div>${logRows.length ? logRows.map(r => r.html).join('') : `<p class="empty">Nothing logged yet this ${pn}.</p>`}</div>
         </div>
       </div>
       <div class="viewfoot">${navWeek}</div>`;
@@ -1212,11 +1258,11 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         const movedTip = o => o.moved ? ` (moved from ${short(parse(o.from))})` : '';
         cells.push(`<div class="cell ${out ? 'out' : ''} ${di === tIso ? 'today' : ''} ${rowCls}" data-act="openWeek" data-s="${w.s}" data-day="${di}" tabindex="0" title="${fmtD(d, { weekday: 'long', month: 'long', day: 'numeric' })}">
           <span class="dn">${d.getDate()}</span>
-          ${payAmt && isPayday(d) ? `<span class="pill inc" title="Payday">+${money(payAmt)} pay</span>` : ''}
+          ${payAmt && isPayday(d) && !(state.settings.payday && di < state.settings.payday) ? `<span class="pill inc" title="Payday">+${money(payAmt)} pay</span>` : ''}
           ${exs.map(x => `<span class="pill inc tinted drag ${x.moved ? 'moved' : ''} ${x.edited ? 'edited' : ''}" style="--pc:${itemColor('incomes', x.item)}" draggable="true" data-act="editOcc" data-kind="incomes" data-drag="incomes" data-id="${esc(x.item.id)}" data-key="${esc(x.key)}" data-date="${x.date}" title="${esc(x.item.name)} ${money(+x.item.amount)}${movedTip(x)} · click to edit this one, drag to move">${x.edited ? '✎ ' : ''}${x.moved ? '↪ ' : ''}+${money(+x.item.amount)} ${esc(x.item.name)}</span>`).join('')}
           ${pays.map(p => `<span class="pill bill tinted drag ${state.settings.paid[p.key] ? 'done' : ''} ${p.moved ? 'moved' : ''} ${p.edited ? 'edited' : ''}" style="--pc:${itemColor('bills', p.bill)}" draggable="true" data-act="editOcc" data-kind="bills" data-drag="bills" data-id="${esc(p.bill.id)}" data-key="${esc(p.key)}" data-date="${p.date}" title="${esc(p.bill.name)} ${money(+p.bill.amount)}${movedTip(p)} · click to edit this one, drag to move">${p.edited ? '✎ ' : ''}${p.moved ? '↪ ' : ''}${esc(p.bill.name)} ${money(+p.bill.amount)}</span>`).join('')}
           ${w.skipped.filter(o => o.date === di).map(o => `<span class="pill skip" data-act="editOcc" data-kind="${o.kind}" data-id="${esc(o.item.id)}" data-key="${esc(o.key)}" data-date="${o.date}" title="${esc(o.item.name)} skipped · click to edit">${esc(o.item.name)}</span>`).join('')}
-          ${sp ? `<span class="pill sp">Spent ${money(sp)}</span>` : ''}
+          ${w.exps.filter(x => x.date === di).map(x => `<span class="pill sp drag" draggable="true" data-drag="expenses" data-id="${esc(x.id)}" data-date="${x.date}" title="${esc(x.category)}${x.note ? ' · ' + esc(x.note) : ''} ${money(+x.amount)} · drag to another day to move it">−${money(+x.amount)} ${esc(x.category)}</span>`).join('')}
         </div>`);
       }
       cells.push(`<div class="wsum ${rowCls}" data-act="openWeek" data-s="${w.s}" tabindex="0">
@@ -1231,7 +1277,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     const mLabel = d => fmtD(d, d.getFullYear() === y ? { month: 'long' } : { month: 'long', year: 'numeric' });
     const navMonth = navSeg('mo', 'moNow', isNow,
       `‹ ${mLabel(new Date(y, m - 1, 1))}`, `${isNow ? 'This month · ' : ''}${fmtD(first, { month: 'long', year: 'numeric' })}`, `${mLabel(new Date(y, m + 1, 1))} ›`,
-      'Previous month', 'Next month');
+      'Previous month', 'Next month', !!startDay() && monthNum(y, m) <= monthNum(startDay().getFullYear(), startDay().getMonth()));
     el.innerHTML = `
       <div class="panel-head">
         <div><p class="eyebrow">Month</p><h2>${fmtD(first, { month: 'long', year: 'numeric' })}</h2>
@@ -1246,7 +1292,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
       </div>
       <div class="navrow">${navMonth}</div>
       ${catStrip(md.payments)}
-      <p class="note-bar">Click a payment or income to change just that one: its amount, name or date, or skip it. ✎ marks one you changed. You can also drag it onto another day to move it. A one-time item just gets its new date. A repeating item moves only that one time and is marked <b>↪ Moved</b>. Drag it back to its original day to undo.</p>
+      <p class="note-bar">Click a payment or income to change just that one: its amount, name or date, or skip it. ✎ marks one you changed. You can also drag it onto another day to move it, and the same goes for spending you logged. A one-time item just gets its new date. A repeating item moves only that one time and is marked <b>↪ Moved</b>. Drag it back to its original day to undo.</p>
       <div class="calwrap"><div class="cal">${heads.join('')}${cells.join('')}</div></div>
       <p class="note-bar">Month totals count only days inside ${fmtD(first, { month: 'long' })}. The right column counts the whole row, even the days that fall in the next or previous month.</p>
       <div class="viewfoot">${navMonth}</div>`;
@@ -1256,7 +1302,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   function renderYear(el) {
     const Y = state.year, t = today(), tIso = iso(t);
     const yc = counted(new Date(Y, 0, 1), new Date(Y, 11, 31)); // same figures as "Left over, added up"
-    const navYear = navSeg('yr', 'yrNow', Y === t.getFullYear(), `‹ ${Y - 1}`, `${Y === t.getFullYear() ? 'This year · ' : ''}${Y}`, `${Y + 1} ›`, 'Previous year', 'Next year');
+    const navYear = navSeg('yr', 'yrNow', Y === t.getFullYear(), `‹ ${Y - 1}`, `${Y === t.getFullYear() ? 'This year · ' : ''}${Y}`, `${Y + 1} ›`, 'Previous year', 'Next year', !!startDay() && Y <= startDay().getFullYear());
     let start = yearFirstWeek(Y);
     const rows = []; let n = 1;
     const tot = { income: 0, bills: 0, spent: 0, left: 0 };
@@ -1368,6 +1414,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     if (ends === 'count') { it.count = Math.max(1, parseInt(v('Count'), 10) || 1); }
     const list = state.settings[kind], i = list.findIndex(x => x.id === it.id);
     it.cat = i >= 0 ? catFor(kind, list[i]) : CATS_BY[kind][0];
+    if (i >= 0 && list[i].logged) { it.logged = true; it.loggedAt = list[i].loggedAt; }   // keep it in the day's log after an edit
     if (i >= 0) list[i] = it; else list.push(it);
     resetForm(kind); render(); queueSave();
     $('#' + p + 'Name').focus();
@@ -1674,6 +1721,15 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   });
   function moveItem(dr, to) {
     if (!to || to === dr.date) return;
+    if (state.settings.payday && to < state.settings.payday) { toast('Can’t move anything before your starting day.'); return; }
+    if (dr.kind === 'expenses') {
+      // a logged expense just gets a new date
+      const x = state.expenses.find(e => e.id === dr.id); if (!x) return;
+      backend.update('expenses', x.id, { date: to })
+        .then(() => toast(`Moved ${money(+x.amount)} ${x.category} to ${short(parse(to))}`))
+        .catch(err => setSaveState('Couldn’t move that expense (' + (err && err.code || 'error') + ')'));
+      return;
+    }
     const it = state.settings[dr.kind].find(x => x.id === dr.id); if (!it) return;
     const s = state.settings;
     if (it.freq === 'once') {
@@ -1757,10 +1813,33 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
       render(); queueSave();
     }
   });
+  // Expense / Income switch on the day form: swap the fields in place so a typed amount isn't lost
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-logkind]'); if (!b) return;
+    const inc = b.dataset.logkind === 'income';
+    state.logKind = inc ? 'income' : 'expense';
+    document.querySelectorAll('[data-logkind]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    $('#eCat').innerHTML = (inc ? INC_CATS : CATS).map(c => `<option>${c}</option>`).join('');
+    $('#eCatLbl').textContent = inc ? 'Type' : 'Category';
+    $('#eNoteLbl').textContent = inc ? 'From (optional)' : 'Note (optional)';
+    $('#eNote').placeholder = inc ? 'Tips, refund, gift…' : 'Where or what';
+    $('#eSubmit').textContent = inc ? 'Log income' : 'Log expense';
+    $('#eAmt').focus();
+  });
   document.addEventListener('submit', e => {
     if (e.target.id !== 'expform') return;
     e.preventDefault();
     const amount = round2(+$('#eAmt').value || 0); if (amount <= 0) return;
+    if (state.logKind === 'income') {
+      // income for the day becomes a one-time income item, so it counts everywhere income counts
+      const date = $('#eDate').value; if (!date) return;
+      const cat = $('#eCat').value, note = $('#eNote').value.trim();
+      state.settings.incomes.push({ id: uid(), name: note || cat + ' income', amount, freq: 'once', ends: 'never', date, cat, logged: true, loggedAt: Date.now() });
+      render(); queueSave();
+      toast(`Logged +${money(amount)} income for ${short(parse(date))}`);
+      const a = $('#eAmt'); if (a) a.focus();
+      return;
+    }
     const x = { date: $('#eDate').value, amount, category: $('#eCat').value, note: $('#eNote').value.trim(), createdAt: Date.now() };
     if (!x.date) return;
     backend.add('expenses', x).catch(err => setSaveState(err && err.code === 'quota_exceeded' ? 'Storage is full. Delete some old expenses to add more.' : 'Couldn’t log that expense. Try again.'));
