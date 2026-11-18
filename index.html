@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Payweek: payday-to-payday budgeting</title>
+<meta name="description" content="Payweek shows what's due, what's spent and what's left between paydays, and warns you before you come up short.">
+<script>try { var t = localStorage.getItem('payweek.theme') || 'light'; if (t !== 'auto') document.documentElement.setAttribute('data-theme', t); } catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }</script>
+<link rel="icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="site.css">
+</head>
+<body class="site">
+<header class="sitenav"><div class="sitenav-in">
+  <a class="site-logo" href="index.html"><img src="icon.png" alt="">Payweek</a>
+  <nav class="sitelinks" aria-label="Site">
+    <a href="index.html" aria-current="page">Home</a>
+    <a href="#how">How it works</a>
+    <a href="app.html" class="cta">Open my budget</a>
+  </nav>
+</div></header>
+
+<main class="page">
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Budgeting that runs on paydays</p>
+      <h1>Know before payday if you'll come up short.</h1>
+      <p class="lead">Payweek lines up every bill with the paycheck that pays it. You see what's due, what you've spent and what's left for each pay period, and you get a warning before things go below $0.</p>
+      <div class="actions">
+        <a class="btn primary" href="app.html">Open my budget →</a>
+        <a class="btn ghost" href="#how">See how it works</a>
+      </div>
+      <p class="muted" style="margin-top:14px;font-size:.9rem">Free. No sign-up. Your numbers stay in your browser.</p>
+    </div>
+    <div class="mock" aria-label="Example of the Payweek dashboard">
+      <div class="row">
+        <div class="tile"><span>Income</span><b>$1,500</b></div>
+        <div class="tile"><span>Bills due</span><b>$905</b></div>
+        <div class="tile"><span>Spent</span><b>$212</b></div>
+        <div class="tile left"><span>Left over</span><b>$383</b></div>
+      </div>
+      <div class="bar"><i style="width:60%;background:var(--bills)"></i><i style="width:14%;background:#c27a16"></i><i style="width:26%;background:var(--accent);opacity:.35"></i></div>
+      <div class="item"><i class="dot" style="background:#2f5a88"></i>Rent · due Fri<b>$800.00</b></div>
+      <div class="item"><i class="dot" style="background:#8a4fb0"></i>Streaming · due Sun<b>$18.00</b></div>
+      <div class="item"><i class="dot" style="background:#2f5a88"></i>Phone · due Tue<b>$87.00</b></div>
+      <div class="warn">⚠ "Together" drops below $0 in the week of Jan 8. Plan ahead.</div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Everything a paycheck budget needs</h2>
+    <p class="sub">Built for people paid weekly, every two weeks, twice a month or monthly, and for anyone who wants to see one paycheck at a time.</p>
+    <div class="features">
+      <div class="feature"><div class="ico">🗓️</div><h3>Pay-period view</h3><p>Each period runs from payday to the day before the next one, with every bill that falls inside it.</p></div>
+      <div class="feature"><div class="ico">➕</div><h3>Running "Together" total</h3><p>Left over from every period adds up, so you can see whether you're getting ahead or falling behind.</p></div>
+      <div class="feature"><div class="ico">⚠️</div><h3>Early warnings</h3><p>The dashboard flags every week, month and year where your running total goes negative.</p></div>
+      <div class="feature"><div class="ico">↪️</div><h3>Drag to move a bill</h3><p>Paying something late or early? Drag it to another day in the calendar, or change just that one payment.</p></div>
+      <div class="feature"><div class="ico">🎨</div><h3>Your categories, your colors</h3><p>Sort payments into Bill, Entertainment, W2L or Other, and income into Job, Side or Other. Pick a color for each.</p></div>
+      <div class="feature"><div class="ico">📈</div><h3>Charts and a full year</h3><p>Line charts, month cards and a pay-period table for the whole year, with category totals everywhere.</p></div>
+    </div>
+  </section>
+
+  <section class="section" id="how">
+    <h2>Set up in three steps</h2>
+    <p class="sub">It takes about five minutes.</p>
+    <div class="steps">
+      <div class="step"><h3>Enter your pay</h3><p>Your take-home pay, how often you're paid, and the starting day. Every calculation counts from that day.</p></div>
+      <div class="step"><h3>Add your bills</h3><p>Rent, phone, subscriptions, loans. Set how often each repeats and, if it ends, when.</p></div>
+      <div class="step"><h3>Log spending as you go</h3><p>Click a day in the calendar to log what you spent. Left over and Together update right away.</p></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Works with how you're paid</h2>
+    <p class="sub">Pick one and the whole tool, including the views, totals and charts, follows it.</p>
+    <div class="chips"><span>Weekly</span><span>Every 2 weeks</span><span>Twice a month</span><span>Monthly</span></div>
+  </section>
+
+  <section class="section">
+    <div class="band">
+      <div><h2>Your budget, one paycheck at a time.</h2><p style="opacity:.85;margin-top:6px">Your data stays in this browser. Use Export to keep a backup or move it to another computer.</p></div>
+      <a class="btn" href="app.html">Open my budget →</a>
+    </div>
+  </section>
+</main>
+
+<footer class="sitefoot"><div class="sitefoot-in">
+  <span>Payweek · payday-to-payday budgeting</span>
+  <span><a href="app.html">Budget</a> · <a href="#how">How it works</a></span>
+</div></footer>
+</body>
+</html>

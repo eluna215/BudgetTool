@@ -1,0 +1,1780 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Your Payweek budget: what's due, what's spent and what's left between paydays.">
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="site.css">
+<title>Payweek Budget</title>
+<script>
+/* Theme before first paint: light unless the viewer picked Dark or Auto (follow the system). */
+try { var pwTheme = localStorage.getItem('payweek.theme') || 'light'; if (pwTheme !== 'auto') document.documentElement.setAttribute('data-theme', pwTheme); }
+catch (e) { document.documentElement.setAttribute('data-theme', 'light'); }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Inter:wght@400;500;600&display=swap">
+<style>
+/* Layout: header, Pay & bills panel (pay, bills, other income, then view tabs), then the active view. Month calendar rows line up with pay weeks. */
+:root {
+  --bg: #eef2f0; --surface: #ffffff; --surface-2: #f6f8f7; --ink: #15201b; --muted: #5a6962; --line: #d9e1dd;
+  --accent: #1d6b57; --accent-ink: #ffffff; --accent-soft: #dcece5;
+  --bills: #2f5a88; --bills-soft: #e1e9f3; --spent: #b8771f; --pos: #1f7a4d; --neg: #b3372e; --warn: #9a6410;
+  --pos-soft: #dff1e6; --neg-soft: #f8e1de; --warn-soft: #f6ead3;
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1412; --surface: #171e1b; --surface-2: #1c2521; --ink: #e5ece8; --muted: #93a39b; --line: #2a3530;
+  --accent: #5cc3a3; --accent-ink: #0d1a15; --accent-soft: #1b3029;
+  --bills: #8db2dc; --bills-soft: #1d2a3a; --spent: #e2ab58; --pos: #63cf91; --neg: #f07c71; --warn: #e2ab58;
+  --pos-soft: #183427; --neg-soft: #3a1f1c; --warn-soft: #362a16; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1412; --surface: #171e1b; --surface-2: #1c2521; --ink: #e5ece8; --muted: #93a39b; --line: #2a3530;
+  --accent: #5cc3a3; --accent-ink: #0d1a15; --accent-soft: #1b3029;
+  --bills: #8db2dc; --bills-soft: #1d2a3a; --spent: #e2ab58; --pos: #63cf91; --neg: #f07c71; --warn: #e2ab58;
+  --pos-soft: #183427; --neg-soft: #3a1f1c; --warn-soft: #362a16; color-scheme: dark }
+:root[data-theme="light"] { color-scheme: light; }
+.seg.theme button { font-size: 0.82rem; padding: 6px 10px; }
+.seg.theme button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 56px; }
+.wrap { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2, h3 { font-family: var(--display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 1.6rem; font-weight: 700; }
+h2 { font-size: 1.35rem; font-weight: 700; }
+h3 { font-size: 1rem; font-weight: 700; }
+p { margin: 0; }
+.num, td, .stat b { font-variant-numeric: tabular-nums; }
+.eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.small { font-size: 0.82rem; }
+
+header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.mark { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-family: var(--display); font-weight: 700; font-size: 1.05rem; }
+.savestate { font-size: 0.8rem; color: var(--muted); }
+.topright { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.dashbtn { text-decoration: none; font-weight: 700; color: var(--accent-ink); background: var(--accent); border: 1px solid var(--accent); border-radius: 10px; padding: 9px 16px; white-space: nowrap; }
+.dashbtn:hover { filter: brightness(1.07); }
+.dashbtn[aria-current="page"] { background: var(--surface); color: var(--accent); }
+.dashbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* dashboard */
+.dgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.dgrid .full { grid-column: 1 / -1; }
+.dtable { min-width: 480px; }
+.dscroll { max-height: 340px; overflow: auto; }
+.dscroll thead th { position: sticky; top: 0; z-index: 1; }
+.alerts { border: 1px solid var(--neg); background: var(--neg-soft); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.alerts.ok { border-color: var(--accent); background: var(--accent-soft); }
+.alerts h3 { display: flex; align-items: center; gap: 8px; }
+.flaglist { display: flex; flex-wrap: wrap; gap: 6px; }
+.flag { border: 1px solid var(--neg); background: var(--surface); color: var(--neg); border-radius: 8px; padding: 5px 10px; font-size: 0.82rem; font-weight: 600; text-align: left; font-variant-numeric: tabular-nums; }
+.flag:hover { background: var(--neg-soft); }
+.flag span { color: var(--muted); font-weight: 500; }
+td .neg, td.neg { color: var(--neg); font-weight: 600; }
+@media (max-width: 900px) { .dgrid { grid-template-columns: minmax(0, 1fr); } }
+.chart { position: relative; height: 240px; min-width: 0; }
+.chart svg { display: block; overflow: visible; }
+.chart .ctick { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.ctip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.15); padding: 8px 10px; font-size: 0.8rem; display: flex; flex-direction: column; gap: 3px; min-width: 170px; z-index: 2; }
+.ctip span { display: flex; align-items: center; gap: 6px; }
+.ctip span b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.ctip i, .clegend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.ctip b.neg { color: var(--neg); }
+.clegend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; color: var(--muted); }
+.clegend span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Week / Month / Year tabs: full width, the active one joins the view panel below */
+html { scroll-padding-top: 72px; }
+/* compact "Left over, added up" bar pinned to the bottom until the full section is on screen */
+.lbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 19; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: var(--surface); box-shadow: 0 -4px 18px rgba(0,0,0,.08); padding: 10px 16px; text-align: left; font-weight: 400; }
+.lbar[hidden] { display: none; }
+.lbar:hover { background: var(--surface-2); }
+.lbar-inner { max-width: 1160px; margin: 0 auto; display: flex; align-items: center; gap: 16px; }
+.lbar-title { font-family: var(--display); white-space: nowrap; }
+.lbar-vals { display: flex; gap: 6px 18px; flex-wrap: wrap; flex: 1; font-size: 0.85rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lbar-vals b { color: var(--ink); }
+.lbar-vals b.neg { color: var(--neg); }
+.lbar-open { font-weight: 700; color: var(--accent); white-space: nowrap; }
+body.lbar-on { padding-bottom: 72px; }
+.toast { bottom: 20px; }
+body.lbar-on .toast { bottom: 76px; }
+@media (max-width: 760px) { .lbar-inner { flex-wrap: wrap; gap: 4px 12px; } .lbar-vals { order: 3; flex-basis: 100%; } body.lbar-on { padding-bottom: 96px; } body.lbar-on .toast { bottom: 100px; } }
+.viewbox { display: flex; flex-direction: column; min-width: 0; }
+nav.tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+nav.tabs a { position: relative; text-align: center; text-decoration: none; font-family: var(--display); font-size: 1.1rem; font-weight: 700; color: var(--muted);
+  padding: 14px 8px; background: var(--surface-2); border: 1px solid var(--line); border-bottom: 0; border-radius: 14px 14px 0 0; margin-bottom: 0; }
+nav.tabs a:hover { color: var(--ink); background: var(--surface); }
+nav.tabs a[aria-current="page"] { background: var(--surface); color: var(--accent); box-shadow: inset 0 4px 0 var(--accent); margin-bottom: -1px; padding-bottom: 15px; z-index: 1; }
+nav.tabs a:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.viewbox > #view { border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* compact Pay & bills bar shown once the full section scrolls away */
+.qbar { position: fixed; top: 0; left: 0; right: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line); box-shadow: 0 4px 18px rgba(0,0,0,.08); padding: 8px 16px; }
+.qbar[hidden] { display: none; }
+.qinner { max-width: 1160px; margin: 0 auto; display: flex; gap: 12px; align-items: center; }
+.qhead { display: flex; gap: 8px; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.qtitle { border: 0; background: transparent; padding: 4px 6px; text-align: left; white-space: nowrap; }
+.qtoggle { display: none; }
+.qform { display: grid; grid-template-columns: auto minmax(120px, 1.4fr) minmax(90px, .8fr) minmax(110px, 1fr) minmax(130px, 1fr) auto; gap: 8px; align-items: center; flex: 1; min-width: 0; }
+.qform input, .qform select { min-width: 0; width: 100%; }
+@media (max-width: 900px) {
+  .qinner { flex-direction: column; align-items: stretch; gap: 8px; }
+  .qtoggle { display: inline-block; }
+  .qbar:not(.open) .qform { display: none; }
+  .qform { grid-template-columns: 1fr 1fr; }
+  .qform .qkind, .qform #qName { grid-column: 1 / -1; }
+  .qform .qkind { justify-self: start; }
+}
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.sub { color: var(--muted); margin-top: 2px; }
+
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; font-weight: 500; }
+button:hover { background: var(--surface-2); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+button.primary:hover { filter: brightness(1.07); }
+button.ghost { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 8px; }
+button.ghost:hover { color: var(--ink); background: var(--surface-2); }
+button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: inline-flex; gap: 4px; }
+input, select { background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; min-width: 0; width: 100%; }
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--muted); font-weight: 500; min-width: 0; }
+.money-in { position: relative; }
+.money-in span { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.money-in input { padding-left: 22px; }
+
+.setup { background: var(--accent-soft); border: 1px solid var(--accent); border-radius: 14px; padding: 16px 20px; display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stat { background: var(--surface-2); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat b { font-family: var(--display); font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.stat.left { background: var(--accent-soft); }
+.stat.left.neg { background: var(--neg-soft); }
+.stat.left.neg b { color: var(--neg); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 1px; }
+
+.meter { height: 14px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--line); display: flex; overflow: hidden; }
+.meter > i { display: block; height: 100%; }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 16px; align-items: start; }
+.card { border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+
+.billrow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.billrow:first-child { border-top: 0; }
+.billrow .name { font-weight: 600; overflow-wrap: anywhere; }
+.billrow.paid .name { text-decoration: line-through; color: var(--muted); }
+.billrow input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
+.chip { display: inline-block; font-size: 0.72rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.chip.paid { background: var(--pos-soft); color: var(--pos); }
+.chip.over { background: var(--neg-soft); color: var(--neg); }
+.chip.today { background: var(--warn-soft); color: var(--warn); }
+.empty { color: var(--muted); padding: 6px 0; }
+
+.days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; align-items: end; height: 130px; }
+.day { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; min-width: 0; }
+.day .bar { width: 100%; max-width: 38px; background: var(--spent); border-radius: 4px 4px 0 0; min-height: 2px; opacity: 0.9; }
+.day .bar.zero { background: var(--line); }
+.day .amt { font-size: 0.7rem; color: var(--muted); white-space: nowrap; }
+.day .lbl { font-size: 0.72rem; color: var(--muted); font-weight: 600; }
+.day.is-today .lbl { color: var(--accent); }
+.day.is-today .bar { outline: 2px solid var(--accent); outline-offset: 1px; }
+.day.future .bar.zero { background: transparent; border: 1px dashed var(--line); border-bottom: 0; min-height: 6px; }
+
+.miniform { display: grid; grid-template-columns: 1fr 1.2fr 1.2fr; gap: 8px; }
+.miniform .wide { grid-column: 1 / 3; }
+.miniform button { align-self: end; }
+.exprow { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); font-size: 0.88rem; }
+.exprow .what { overflow-wrap: anywhere; }
+
+/* pay & bills */
+.settings { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
+label.field.big select { font-weight: 700; font-size: 1.05rem; }
+.paytop { display: grid; grid-template-columns: minmax(0, 200px) minmax(0, 180px) minmax(0, 190px) minmax(0, 1fr); gap: 16px; align-items: start; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+label.field.big { font-size: 0.95rem; font-weight: 700; color: var(--ink); }
+label.field.big input { font-weight: 700; font-size: 1.05rem; }
+.startnote { display: flex; flex-direction: column; gap: 6px; align-self: end; }
+.startalert { background: var(--warn-soft); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 0.85rem; font-weight: 600; }
+@media (max-width: 760px) { .paytop { grid-template-columns: 1fr 1fr; } .startnote { grid-column: 1 / -1; } }
+.settings .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.block { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.block + .block { border-top: 1px solid var(--line); padding-top: 16px; }
+.itemform { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; align-items: end; }
+.itemform .span2 { grid-column: span 2; }
+.itemform .actions { display: flex; gap: 6px; }
+.itemform .actions button { flex: 1; }
+.itemlist { display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--r); padding: 0 12px; background: var(--surface); scrollbar-gutter: stable; }
+.itemlist .item:first-child { border-top: 0; }
+.itemlist .empty { padding: 10px 0; }
+.subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.subtabs button { border: 0; border-radius: 8px 8px 0 0; background: transparent; padding: 8px 14px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.subtabs button:hover { background: var(--surface-2); color: var(--ink); }
+.subtabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.subtabs .count { display: inline-block; min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--surface-2); color: var(--muted); font-size: 0.72rem; text-align: center; margin-left: 4px; }
+.subtabs button[aria-selected="true"] .count { background: var(--accent-soft); color: var(--accent); }
+.listtools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px); gap: 8px; }
+.listhead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+.catstrip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.catbox { border: 1px solid var(--line); border-radius: var(--r); padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.catbox b { font-variant-numeric: tabular-nums; font-size: 1rem; }
+.catbox .share { height: 4px; border-radius: 2px; background: var(--surface-2); overflow: hidden; margin-top: 2px; }
+.catbox .share i { display: block; height: 100%; background: var(--bills); }
+.catbox.zero b { color: var(--muted); font-weight: 500; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.item .name { font-weight: 600; overflow-wrap: anywhere; }
+.item.ended .name, .item.ended .num { color: var(--muted); }
+.item .num.inc { color: var(--pos); }
+.item.has-cats { grid-template-columns: minmax(0, 1fr) auto auto auto; }
+.cats { display: inline-flex; gap: 2px; padding: 2px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; }
+.cats button { border: 0; background: transparent; padding: 3px 9px; font-size: 0.76rem; font-weight: 600; color: var(--muted); border-radius: 6px; }
+.cats button:hover { background: var(--surface); color: var(--ink); }
+.cats button[aria-pressed="true"] { background: var(--bills); color: var(--surface); }
+.cats.inc button[aria-pressed="true"] { background: var(--pos); color: var(--surface); }
+.carry { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line); display: flex; flex-direction: column; gap: 1px; font-size: 0.8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.carry strong { color: var(--ink); font-size: 0.95rem; font-weight: 700; }
+.carry .neg, .carry strong.neg { color: var(--neg); }
+@media (max-width: 760px) {
+  .item.has-cats { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .item.has-cats .cats { grid-column: 1 / -1; order: 5; justify-self: start; flex-wrap: wrap; }
+}
+
+/* tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); }
+table { border-collapse: collapse; width: 100%; min-width: 860px; }
+th { text-align: left; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding: 10px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th.r, td.r { text-align: right; white-space: nowrap; }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: var(--surface-2); }
+tr.past td { color: var(--muted); }
+tr.current td { background: var(--accent-soft); }
+tr.current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+td.wk, td.dates { white-space: nowrap; }
+td.wk { font-weight: 600; }
+.pays { display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.pay { font-size: 0.8rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px; padding: 1px 7px; white-space: nowrap; }
+.pay.done { color: var(--muted); text-decoration: line-through; }
+.pay em { font-style: normal; color: var(--muted); }
+td.inc { color: var(--pos); }
+td.neg { color: var(--neg); font-weight: 600; }
+td.left { font-weight: 600; }
+tfoot td { font-weight: 700; background: var(--surface-2); border-bottom: 0; }
+table.lefttable { min-width: 560px; }
+.yearsum { display: flex; gap: 24px; flex-wrap: wrap; }
+.yearsum div { display: flex; flex-direction: column; }
+.yearsum b { font-family: var(--display); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+.note-bar { font-size: 0.82rem; color: var(--muted); background: var(--surface-2); border-radius: 8px; padding: 8px 12px; }
+
+.months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.mcard { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line); min-width: 0; }
+.mcard:hover { border-color: var(--accent); background: var(--surface-2); }
+.mcard.now { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.mcard .mname { font-weight: 600; }
+.mcard b { font-family: var(--display); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.mcard b.neg { color: var(--neg); }
+.mcard .mbar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; display: flex; margin-top: 4px; }
+.mcard .mbar i { display: block; height: 100%; }
+
+.calwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r); }
+.cal { display: grid; grid-template-columns: repeat(7, minmax(92px, 1fr)) 140px; min-width: 820px; }
+.cal .hd { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; padding: 8px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.cal .cell { min-height: 98px; padding: 6px 7px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; cursor: pointer; min-width: 0; }
+.cal .cell:hover { background: var(--surface-2); }
+.cal .cell.out { background: var(--surface-2); }
+.cal .cell.out .dn, .cal .cell.out .pill { opacity: .55; }
+.cal .dn { font-weight: 600; font-size: 0.82rem; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; }
+.cal .cell.today .dn { background: var(--accent); color: var(--accent-ink); }
+.pill { font-size: 0.72rem; line-height: 1.35; padding: 1px 6px; border-radius: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill.bill { background: var(--bills-soft); color: var(--bills); }
+/* items colored by their category: soft tint + solid left edge, text stays readable ink */
+.pill.tinted { --pc: var(--bills); background: color-mix(in srgb, var(--pc) 20%, var(--surface)); color: var(--ink); box-shadow: inset 3px 0 0 var(--pc); font-weight: 500; }
+.pill.tinted.edited { box-shadow: inset 3px 0 0 var(--pc), inset 0 0 0 1.5px var(--pc); }
+.cdot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: 0; flex-shrink: 0; }
+.pay.tinted { border-left: 3px solid var(--pc); }
+.subtabrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.colorbtn { margin-left: auto; font-size: 0.82rem; padding: 5px 10px; }
+dialog#colorDlg { border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--surface); color: var(--ink); width: min(500px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+dialog#colorDlg::backdrop { background: rgba(0,0,0,.35); }
+.colorform { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+.colorgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.colorform { overflow-x: hidden; }
+.colorrow { min-width: 0; display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font-weight: 600; font-size: 0.88rem; cursor: pointer; }
+.colorrow input[type=color] { width: 34px; height: 26px; border: 0; padding: 0; background: none; cursor: pointer; flex-shrink: 0; }
+.colorrow .sample { margin-left: auto; font-size: 0.72rem; padding: 1px 6px; border-radius: 5px; white-space: nowrap; }
+.pill.bill.done { text-decoration: line-through; }
+.pill.inc { background: var(--pos-soft); color: var(--pos); font-weight: 600; }
+.pill.sp { color: var(--spent); padding-left: 0; }
+.cal .wsum { padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--surface-2); display: flex; flex-direction: column; gap: 1px; font-size: 0.78rem; font-variant-numeric: tabular-nums; cursor: pointer; }
+.cal .wsum b { font-size: 0.9rem; }
+.cal .wsum b.neg { color: var(--neg); }
+.cal .wsum .wcarry { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--line); }
+.cal .wsum .wcarry b { font-size: 0.82rem; }
+.cal .row-current { box-shadow: inset 0 3px 0 var(--accent); }
+.pill.drag { cursor: grab; flex-shrink: 0; }
+.pill.drag:hover { filter: brightness(0.95); box-shadow: 0 0 0 1px currentColor; }
+.pill.moved { outline: 1.5px dashed currentColor; outline-offset: -1.5px; }
+.pill.dragging { opacity: .4; }
+.cal .cell.over { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); }
+.chip.moved { background: var(--warn-soft); color: var(--warn); }
+.pay.moved em { color: var(--warn); }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 20px); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 10px; font-size: 0.88rem; font-weight: 500; box-shadow: 0 6px 24px rgba(0,0,0,.2); opacity: 0; pointer-events: none; max-width: calc(100vw - 32px); z-index: 10; transition: opacity .2s, transform .2s; }
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.seg.nav { flex-wrap: wrap; justify-content: center; }
+.navrow { display: flex; justify-content: center; }
+.tomonth { display: flex; gap: 8px; flex-wrap: wrap; }
+.tomonth button { font-size: 0.85rem; font-weight: 600; color: var(--accent); border-color: var(--accent); background: var(--surface); }
+.tomonth button:hover { background: var(--accent-soft); }
+.panel-head:has(> .seg.nav) { flex-direction: column; align-items: stretch; }
+.panel-head > .seg.nav { align-self: center; }
+.seg.nav button[disabled] { opacity: 1; background: var(--accent-soft); border-color: var(--accent); font-weight: 600; }
+.viewfoot { display: flex; justify-content: center; padding-top: 4px; border-top: 1px solid var(--line); padding-top: 14px; }
+.seg.backup button { font-size: 0.82rem; padding: 6px 12px; }
+dialog#impDlg { border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--surface); color: var(--ink); width: min(420px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+dialog#impDlg::backdrop { background: rgba(0,0,0,.35); }
+.impform { display: flex; flex-direction: column; gap: 10px; padding: 20px; }
+#occDlg [hidden] { display: none !important; }
+dialog#occDlg { border: 1px solid var(--line); border-radius: 14px; padding: 0; background: var(--surface); color: var(--ink); width: min(420px, calc(100vw - 32px)); box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+dialog#occDlg::backdrop { background: rgba(0,0,0,.35); }
+#occForm { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+#occForm h3 { margin: 2px 0; }
+.occrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+label.check { display: flex; align-items: center; gap: 8px; font-size: 0.88rem; }
+label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+.occbtns { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.occbtns .grow { flex: 1; }
+.billrow.has-edit { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.billrow.skipped { opacity: .6; }
+.billrow.skipped .name { text-decoration: line-through; }
+.chip.edited { background: var(--accent-soft); color: var(--ink); }
+.pill.edited { box-shadow: inset 0 0 0 1.5px currentColor; }
+.pill.skip { background: transparent; border: 1px dashed currentColor; color: var(--muted); text-decoration: line-through; }
+
+@media (max-width: 900px) {
+  .grid2, .settings { grid-template-columns: minmax(0, 1fr); }
+  .months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .miniform, .itemform, .catstrip { grid-template-columns: 1fr 1fr; }
+  .miniform .wide, .itemform .span2 { grid-column: 1 / -1; }
+  .panel { padding: 16px; }
+  .stat b { font-size: 1.25rem; }
+  .months { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  nav.tabs { gap: 4px; }
+  nav.tabs a { font-size: 1rem; padding: 12px 4px; }
+}
+@media (prefers-reduced-motion: no-preference) { .meter > i, .day .bar { transition: width .3s ease, height .3s ease; } }
+</style>
+</head>
+<body class="site-app">
+<header class="sitenav"><div class="sitenav-in">
+  <a class="site-logo" href="index.html"><img src="icon.png" alt="">Payweek</a>
+  <nav class="sitelinks" aria-label="Site">
+    <a href="index.html">Home</a>
+    <a href="index.html#how">How it works</a>
+    <a href="app.html" class="cta" aria-current="page">My budget</a>
+  </nav>
+</div></header>
+
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="mark" aria-hidden="true">$</div>
+      <div><h1>Payweek</h1><p class="muted small">Payday to payday: what's due, what's spent, what's left.</p></div>
+    </div>
+    <div class="topright">
+      <div class="savestate" id="savestate">Loading…</div>
+      <div class="seg theme" role="group" aria-label="Color theme">
+        <button type="button" data-themeopt="light" aria-pressed="false" title="Light mode"><span aria-hidden="true">☀</span> Light</button>
+        <button type="button" data-themeopt="dark" aria-pressed="false" title="Dark mode"><span aria-hidden="true">☾</span> Dark</button>
+        <button type="button" data-themeopt="auto" aria-pressed="false" title="Follow your computer's setting">Auto</button>
+      </div>
+      <div class="seg backup">
+        <button type="button" id="btnExport" title="Save all your data to a backup file">Export</button>
+        <button type="button" id="btnImport" title="Load a backup file">Import</button>
+      </div>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+  </header>
+
+  <div id="setup"></div>
+
+  <section class="panel" id="settings" aria-label="Pay and bills">
+    <div class="panel-head">
+      <div><h2>Pay &amp; bills</h2><p class="sub">Your pay, every payment you make, and any other income. All three views below update as you change these.</p></div>
+    </div>
+    <div class="paytop">
+      <label class="field big"><span id="payLbl">Take-home pay per paycheck</span>
+        <div class="money-in"><span>$</span><input id="pay" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></div>
+      </label>
+      <label class="field big">How often you're paid
+        <select id="payFreq">
+          <option value="weekly">Weekly</option>
+          <option value="biweekly">Every 2 weeks</option>
+          <option value="semimonthly">Twice a month</option>
+          <option value="monthly">Monthly</option>
+        </select>
+      </label>
+      <label class="field big">Starting day
+        <input id="payday" type="date" aria-describedby="startAlert paydayHint">
+      </label>
+      <div class="startnote">
+        <p class="startalert" id="startAlert"><span aria-hidden="true">⚑</span> All calculations start on this day. Left over, Together and every total count from here, and anything before it counts as $0.</p>
+        <p class="muted small" id="paydayHint">Each pay week runs from payday through the day before your next payday.</p>
+      </div>
+    </div>
+    <div class="settings">
+      <div class="col">
+        <div class="subtabrow">
+        <div class="subtabs" role="tablist" aria-label="Payments or income">
+          <button type="button" role="tab" id="st-bills" aria-controls="pane-bills" aria-selected="true" data-act="subtab" data-tab="bills">Bills &amp; payments <span class="count" id="count-bills"></span></button>
+          <button type="button" role="tab" id="st-incomes" aria-controls="pane-incomes" aria-selected="false" tabindex="-1" data-act="subtab" data-tab="incomes">Other income <span class="count" id="count-incomes"></span></button>
+        </div>
+        <button type="button" class="colorbtn" id="btnColors" title="Change the color of each payment and income type"><span aria-hidden="true">🎨</span> Colors</button>
+        </div>
+        <div class="block" id="pane-bills" role="tabpanel" aria-labelledby="st-bills">
+          <form class="itemform" id="form-bills" autocomplete="off"></form>
+          <div class="listtools">
+            <input type="search" id="q-bills" placeholder="Search payments" aria-label="Search payments">
+            <select id="f-bills" aria-label="Filter payments">
+              <option value="all">All payments</option>
+              <option value="cat:Bill">Bill</option>
+              <option value="cat:Entertainment">Entertainment</option>
+              <option value="cat:W2L">W2L</option>
+              <option value="cat:Other">Other</option>
+              <option value="active">Active only</option>
+              <option value="ended">Ended only</option>
+            </select>
+          </div>
+          <div class="listhead"><span id="info-bills"></span></div>
+          <div class="itemlist" id="list-bills" tabindex="0" aria-label="Your bills and payments"></div>
+        </div>
+        <div class="block" id="pane-incomes" role="tabpanel" aria-labelledby="st-incomes" hidden>
+          <p class="small muted">Money on top of your weekly pay: overtime, a side job, a bonus, tips. Make it one time or repeating.</p>
+          <form class="itemform" id="form-incomes" autocomplete="off"></form>
+          <div class="listtools">
+            <input type="search" id="q-incomes" placeholder="Search income" aria-label="Search income">
+            <select id="f-incomes" aria-label="Filter income">
+              <option value="all">All income</option>
+              <option value="cat:Job">Job</option>
+              <option value="cat:Side">Side</option>
+              <option value="cat:Other">Other</option>
+              <option value="once">One time</option>
+              <option value="repeat">Repeating</option>
+              <option value="active">Active only</option>
+              <option value="ended">Ended only</option>
+            </select>
+          </div>
+          <div class="listhead"><span id="info-incomes"></span></div>
+          <div class="itemlist" id="list-incomes" tabindex="0" aria-label="Your other income"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="viewbox">
+    <nav class="tabs" aria-label="View">
+      <a href="#week" id="tab-week">Week</a>
+      <a href="#month" id="tab-month">Month</a>
+      <a href="#year" id="tab-year">Year</a>
+      <a href="#dashboard" id="tab-dashboard">Dashboard</a>
+    </nav>
+    <section class="panel" id="view" aria-live="polite"></section>
+  </div>
+
+  <section class="panel" id="totals" aria-label="Money left over"></section>
+</div>
+<div class="qbar" id="qbar" aria-label="Pay and bills, quick add" role="region" hidden>
+  <div class="qinner">
+    <div class="qhead">
+      <button type="button" class="qtitle" data-act="openSettings" title="Open the full Pay &amp; bills section"><b>Pay &amp; bills</b> <span class="small muted" id="qsum"></span> <span aria-hidden="true">↑</span></button>
+      <button type="button" class="primary qtoggle" id="qToggle" aria-expanded="false" aria-controls="qform">+ Add</button>
+    </div>
+    <form class="qform" id="qform" autocomplete="off">
+      <div class="cats qkind" role="group" aria-label="Add a payment or income">
+        <button type="button" data-qkind="bills" aria-pressed="true">Payment</button>
+        <button type="button" data-qkind="incomes" aria-pressed="false">Income</button>
+      </div>
+      <input id="qName" placeholder="Rent, phone, car…" aria-label="Name" maxlength="60" required>
+      <div class="money-in"><span>$</span><input id="qAmt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" aria-label="Amount" required></div>
+      <select id="qFreq" aria-label="How often"></select>
+      <input id="qDate" type="date" aria-label="Date" required>
+      <button type="submit" class="primary">Add</button>
+    </form>
+  </div>
+</div>
+<button type="button" class="lbar" id="lbar" hidden aria-controls="totals" title="Show Left over, added up">
+  <span class="lbar-inner">
+    <b class="lbar-title">Left over, added up</b>
+    <span class="lbar-vals" id="lbarVals"></span>
+    <span class="lbar-open">Show <span aria-hidden="true">↓</span></span>
+  </span>
+</button>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<dialog id="colorDlg" aria-labelledby="colorTitle">
+  <form method="dialog" class="colorform">
+    <div><h3 id="colorTitle">Colors</h3><p class="small muted">Pick a color for each kind of payment and income. It's used in the calendar, the lists and the category totals.</p></div>
+    <div><p class="eyebrow">Payments</p><div class="colorgrid" id="colorBills"></div></div>
+    <div><p class="eyebrow">Income</p><div class="colorgrid" id="colorIncomes"></div></div>
+    <div class="occbtns"><button type="button" class="ghost" id="colorReset">Reset to defaults</button><span class="grow"></span><button type="button" class="primary" id="colorDone">Done</button></div>
+  </form>
+</dialog>
+<dialog id="impDlg" aria-labelledby="impTitle">
+  <form method="dialog" class="impform">
+    <h3 id="impTitle">Replace your budget?</h3>
+    <p class="small" id="impInfo"></p>
+    <p class="small muted">Everything you have now will be replaced by what's in the file. Export first if you want to keep a copy.</p>
+    <div class="occbtns"><span class="grow"></span><button type="button" id="impCancel">Cancel</button><button type="button" class="primary" id="impGo">Replace and load</button></div>
+  </form>
+</dialog>
+<dialog id="occDlg" aria-labelledby="occTitle">
+  <form method="dialog" id="occForm" autocomplete="off">
+    <div><p class="eyebrow" id="occEyebrow">Just this one</p><h3 id="occTitle">Edit payment</h3><p class="small muted" id="occInfo"></p></div>
+    <label class="field">Name<input id="oName" maxlength="60" required></label>
+    <div class="occrow">
+      <label class="field">Amount<div class="money-in"><span>$</span><input id="oAmt" type="number" inputmode="decimal" min="0" step="0.01" required></div></label>
+      <label class="field">Date<input id="oDate" type="date" required></label>
+    </div>
+    <label class="check" id="oSkipLbl"><input type="checkbox" id="oSkip"> Skip this one (don't count it)</label>
+    <p class="small muted" id="occNote"></p>
+    <div class="occbtns">
+      <button type="button" class="ghost" id="oReset">Reset to series</button>
+      <span class="grow"></span>
+      <button type="button" id="oCancel">Cancel</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  const diffDays = (a, b) => Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) - Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 864e5);
+  const mod = (a, n) => ((a % n) + n) % n;
+  const dim = (y, m) => new Date(y, m + 1, 0).getDate();
+  const today = () => { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); };
+  const fmtMoney = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+  const money = n => fmtMoney.format(n || 0);
+  const moneyShort = n => n >= 1000 ? '$' + (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : '$' + Math.round(n);
+  const fmtD = (d, o) => d.toLocaleDateString('en-US', o);
+  const short = d => fmtD(d, { month: 'short', day: 'numeric' });
+  const longD = d => fmtD(d, { month: 'short', day: 'numeric', year: 'numeric' });
+  const wkday = d => fmtD(d, { weekday: 'short' });
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const uid = () => Math.random().toString(36).slice(2, 10);
+  const round2 = n => Math.round(n * 100) / 100;
+  const sum = (arr, f) => round2(arr.reduce((t, x) => t + (+f(x) || 0), 0));
+  const ord = n => n + (n % 10 === 1 && n !== 11 ? 'st' : n % 10 === 2 && n !== 12 ? 'nd' : n % 10 === 3 && n !== 13 ? 'rd' : 'th');
+  const CATS = ['Groceries', 'Gas', 'Eating out', 'Shopping', 'Household', 'Fun', 'Health', 'Other'];
+  const BILL_CATS = ['Bill', 'Entertainment', 'W2L', 'Other'];
+  const catOf = b => BILL_CATS.includes(b.cat) ? b.cat : 'Bill';
+  const INC_CATS = ['Other', 'Side', 'Job'];
+  const incCatOf = x => INC_CATS.includes(x.cat) ? x.cat : 'Other';
+  const CATS_BY = { bills: BILL_CATS, incomes: INC_CATS };
+  const catFor = (kind, it) => kind === 'incomes' ? incCatOf(it) : catOf(it);
+  // ----- colors for each payment category / income type (the user can change them) -----
+  const DEF_COLORS = {
+    bills: { Bill: '#2f5a88', Entertainment: '#8a4fb0', W2L: '#c27a16', Other: '#6b7a73' },
+    incomes: { Job: '#1f7a4d', Side: '#0f7c8c', Other: '#7d8f1f' },
+  };
+  const HEX = /^#[0-9a-f]{6}$/i;
+  const colorOf = (kind, cat) => { const c = (state.settings.colors || {})[kind + ':' + cat]; return HEX.test(c || '') ? c : (DEF_COLORS[kind][cat] || '#6b7a73'); };
+  const itemColor = (kind, it) => colorOf(kind, catFor(kind, it));
+  const textOn = hex => { const n = parseInt(hex.slice(1), 16), L = (0.2126 * (n >> 16 & 255) + 0.7152 * (n >> 8 & 255) + 0.0722 * (n & 255)) / 255; return L > 0.6 ? '#15201b' : '#ffffff'; };
+  const cdot = c => `<i class="cdot" style="background:${c}" aria-hidden="true"></i>`;
+  const FREQ = { monthly: 'Monthly', weekly: 'Weekly', biweekly: 'Every 2 weeks', yearly: 'Yearly', once: 'One time' };
+
+  const t0 = today();
+  const state = {
+    settings: { weeklyPay: null, payFreq: 'weekly', payday: null, bills: [], incomes: [], paid: {}, moves: {}, edits: {}, colors: {} },
+    expenses: [],
+    view: 'week',
+    viewStart: null,
+    month: { y: t0.getFullYear(), m: t0.getMonth() },
+    year: t0.getFullYear(),
+    editing: { bills: null, incomes: null },
+    ready: false,
+  };
+
+  // ---------- pay schedule ----------
+  // The starting day is also a payday; payFreq says how often pay repeats from it.
+  const PAY_FREQS = { weekly: 'Weekly', biweekly: 'Every 2 weeks', semimonthly: 'Twice a month', monthly: 'Monthly' };
+  const PAY_SHORT = { weekly: '/wk', biweekly: '/2 wks', semimonthly: '/paycheck', monthly: '/mo' };
+  const payFreq = () => PAY_FREQS[state.settings.payFreq] ? state.settings.payFreq : 'weekly';
+  const isWeekly = () => payFreq() === 'weekly';
+  const PN = () => isWeekly() ? 'week' : 'pay period';          // what one row of the Week tab is called
+  function anchor() {
+    if (state.settings.payday) return parse(state.settings.payday);
+    const t = today(); return addDays(t, -mod(t.getDay() - 5, 7)); // assume Friday until set
+  }
+  const dayIn = (y, m, D) => new Date(y, m, Math.min(D, dim(y, m)));
+  const semiDays = () => { const D = anchor().getDate(); return D <= 15 ? [D, D + 15] : [D - 15, D]; };
+  function isPayday(d) {
+    const f = payFreq(), a = anchor();
+    if (f === 'weekly') return mod(diffDays(a, d), 7) === 0;
+    if (f === 'biweekly') return mod(diffDays(a, d), 14) === 0;
+    const days = f === 'monthly' ? [a.getDate()] : semiDays();
+    return days.some(D => dayIn(d.getFullYear(), d.getMonth(), D).getDate() === d.getDate());
+  }
+  // first day of the pay period that contains d (the latest payday on or before d)
+  function periodStartFor(d) {
+    const f = payFreq(), a = anchor();
+    if (f === 'weekly' || f === 'biweekly') { const n = f === 'weekly' ? 7 : 14; return addDays(a, Math.floor(diffDays(a, d) / n) * n); }
+    for (let i = 0; i < 40; i++) { const x = addDays(d, -i); if (isPayday(x)) return x; }
+    return d;
+  }
+  function nextPeriodStart(ps) {
+    const f = payFreq();
+    if (f === 'weekly') return addDays(ps, 7);
+    if (f === 'biweekly') return addDays(ps, 14);
+    for (let i = 1; i < 40; i++) { const x = addDays(ps, i); if (isPayday(x)) return x; }
+    return addDays(ps, 31);
+  }
+  const prevPeriodStart = ps => periodStartFor(addDays(ps, -1));
+  const periodEnd = ps => addDays(nextPeriodStart(ps), -1);
+  const weekStartFor = periodStartFor;   // the Week tab shows one pay period
+  // month calendar rows are always 7 days; they start on payday's weekday for weekly/biweekly pay, Sunday otherwise
+  const calRowStart = d => { const dow = (payFreq() === 'weekly' || payFreq() === 'biweekly') ? anchor().getDay() : 0; return addDays(d, -mod(d.getDay() - dow, 7)); };
+
+  // ----- schedules -----
+  // An item: {freq, day (monthly, no end), date, ends: 'never'|'date'|'count', endDate, count}
+  // With no end, weekly / every-2-weeks repeat in both directions from `date`.
+  // With an end, `date` is the first time it happens, and occurrences are counted from there.
+  const hasEnd = it => it.ends === 'date' || it.ends === 'count';
+  // Returns which occurrence d is (0 = first), or null if the item doesn't happen on d.
+  function occIndex(it, d) {
+    if (it.freq === 'once') return it.date && iso(d) === it.date ? 0 : null;
+    const bounded = hasEnd(it);
+    if (it.freq === 'monthly' && !bounded) return d.getDate() === Math.min(it.day || 1, dim(d.getFullYear(), d.getMonth())) ? 0 : null;
+    if (!it.date) return null;
+    const s = parse(it.date), x = diffDays(s, d);
+    if (bounded && x < 0) return null;
+    switch (it.freq) {
+      case 'weekly': return mod(x, 7) === 0 ? Math.floor(x / 7) : null;
+      case 'biweekly': return mod(x, 14) === 0 ? Math.floor(x / 14) : null;
+      case 'monthly': { const want = Math.min(s.getDate(), dim(d.getFullYear(), d.getMonth())); return d.getDate() === want ? (d.getFullYear() - s.getFullYear()) * 12 + d.getMonth() - s.getMonth() : null; }
+      case 'yearly': return d.getMonth() === s.getMonth() && d.getDate() === Math.min(s.getDate(), dim(d.getFullYear(), d.getMonth())) ? d.getFullYear() - s.getFullYear() : null;
+    }
+    return null;
+  }
+  function dueOn(it, d) {
+    const k = occIndex(it, d);
+    if (k === null) return false;
+    if (it.ends === 'date') return !!it.endDate && iso(d) <= it.endDate;
+    if (it.ends === 'count') return k < (+it.count || 0);
+    return true;
+  }
+  function lastDate(it) {
+    if (it.ends === 'date') return it.endDate ? parse(it.endDate) : null;
+    if (it.ends !== 'count' || !it.date) return null;
+    const s = parse(it.date), n = Math.max(1, +it.count || 1) - 1;
+    switch (it.freq) {
+      case 'weekly': return addDays(s, 7 * n);
+      case 'biweekly': return addDays(s, 14 * n);
+      case 'monthly': { const y = s.getFullYear(), m = s.getMonth() + n; const d = new Date(y, m, 1); return new Date(d.getFullYear(), d.getMonth(), Math.min(s.getDate(), dim(d.getFullYear(), d.getMonth()))); }
+      case 'yearly': return new Date(s.getFullYear() + n, s.getMonth(), Math.min(s.getDate(), dim(s.getFullYear() + n, s.getMonth())));
+    }
+    return s;
+  }
+  function freqText(it) {
+    let base;
+    const d = it.date ? parse(it.date) : null;
+    if (it.freq === 'once') base = d ? `Once on ${longD(d)}` : 'One time';
+    else if (it.freq === 'monthly') base = `Monthly on the ${ord(hasEnd(it) && d ? d.getDate() : it.day)}`;
+    else if (it.freq === 'weekly') base = d ? `Every ${fmtD(d, { weekday: 'long' })}` : 'Weekly';
+    else if (it.freq === 'biweekly') base = d ? `Every other ${fmtD(d, { weekday: 'long' })}` : 'Every 2 weeks';
+    else base = d ? `Yearly on ${short(d)}` : 'Yearly';
+    if (it.freq === 'once' || !hasEnd(it)) return base;
+    const last = lastDate(it);
+    const from = d ? ` from ${short(d)}` : '';
+    if (it.ends === 'count') return `${base}${from} · ${it.count} time${+it.count === 1 ? '' : 's'}, last ${last ? longD(last) : ''}`;
+    return `${base}${from} · until ${last ? longD(last) : ''}`;
+  }
+  const isEnded = it => { const l = it.freq === 'once' ? (it.date ? parse(it.date) : null) : lastDate(it); return !!l && iso(l) < iso(today()); };
+
+  // Figures for any date range [start, end]
+  function range(start, end) {
+    const s = iso(start), e = iso(end), n = diffDays(start, end) + 1;
+    const payments = [], extras = [], skipped = []; let paydays = 0;
+    const mv = state.settings.moves || {}, ed = state.settings.edits || {};
+    // one occurrence; a per-date edit can change its name/amount or skip it
+    const add = (kind, it, date, key, moved, from) => {
+      const o = ed[key], d = parse(date);
+      const v = o ? { ...it, ...(o.name ? { name: o.name } : {}), ...(o.amount != null ? { amount: o.amount } : {}) } : it;
+      const occ = { kind, bill: v, item: v, date, d, key, moved, from: from || date, edited: !!(o && (o.name || o.amount != null)) || !!it.edited };
+      if (o && o.skip) skipped.push(occ); else (kind === 'bills' ? payments : extras).push(occ);
+    };
+    for (let i = 0; i < n; i++) {
+      const d = addDays(start, i), di = iso(d);
+      if (isPayday(d)) paydays++;
+      for (const b of state.settings.bills) if (dueOn(b, d) && !mv[b.id + '@' + di]) add('bills', b, di, b.id + '@' + di, false);
+      for (const x of state.settings.incomes) if (dueOn(x, d) && !mv[x.id + '@' + di]) add('incomes', x, di, x.id + '@' + di, false);
+    }
+    // occurrences of repeating items that were moved to another day
+    for (const [key, to] of Object.entries(mv)) {
+      if (to < s || to > e) continue;
+      const at = key.lastIndexOf('@'), id = key.slice(0, at), from = key.slice(at + 1);
+      const b = state.settings.bills.find(x => x.id === id);
+      if (b) { if (dueOn(b, parse(from))) add('bills', b, to, key, true, from); continue; }
+      const x = state.settings.incomes.find(y => y.id === id);
+      if (x && dueOn(x, parse(from))) add('incomes', x, to, key, true, from);
+    }
+    const byDate = (a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0;
+    payments.sort(byDate); extras.sort(byDate); skipped.sort(byDate);
+    const exps = state.expenses.filter(x => x.date >= s && x.date <= e)
+      .sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : (b.createdAt || 0) - (a.createdAt || 0));
+    const pay = round2((+state.settings.weeklyPay || 0) * paydays);
+    const extra = sum(extras, x => x.item.amount);
+    const bills = sum(payments, p => p.bill.amount);
+    const spent = sum(exps, x => x.amount);
+    const income = round2(pay + extra);
+    return { start, end, s, e, payments, exps, extras, skipped, pay, extra, income, bills, spent, left: round2(income - bills - spent) };
+  }
+  const week = start => range(start, periodEnd(start));   // one pay period
+  // The one rule every month/year total uses: count from the recent payday you entered; days before it count as $0.
+  const countFrom = () => state.settings.payday ? parse(state.settings.payday) : null;
+  function counted(a, b) {
+    const st = countFrom();
+    if (!st || iso(a) >= iso(st)) return { ...range(a, b), clipped: false };
+    if (iso(b) < iso(st)) return { start: a, end: b, s: iso(a), e: iso(b), payments: [], exps: [], extras: [], skipped: [], pay: 0, extra: 0, income: 0, bills: 0, spent: 0, left: 0, clipped: true, before: true };
+    return { ...range(st, b), clipped: true };
+  }
+
+  // ---------- storage ----------
+  const LS = 'payweek.v1';
+  let backend = null, saveTimer = null, saving = false, dirty = false, loadTimer = null;
+  const setSaveState = t => { $('#savestate').textContent = t; };
+  const normSettings = d => ({ weeklyPay: d.weeklyPay ?? null, payFreq: d.payFreq || 'weekly', payday: d.payday ?? null, bills: (d.bills || []).map(b => ({ ...b })), incomes: (d.incomes || []).map(b => ({ ...b })), paid: { ...(d.paid || {}) }, moves: { ...(d.moves || {}) }, edits: JSON.parse(JSON.stringify(d.edits || {})), colors: { ...(d.colors || {}) } });
+
+  const localBackend = {
+    kind: 'local',
+    read() { try { return JSON.parse(localStorage.getItem(LS) || '{}'); } catch { return {}; } },
+    persist() { try { localStorage.setItem(LS, JSON.stringify({ settings: state.settings, expenses: state.expenses })); } catch {} },
+    async start() { const all = this.read(); if (all.settings) state.settings = normSettings(all.settings); state.expenses = all.expenses || []; },
+    async saveSettings() { this.persist(); },
+    async add(kind, x) { state[kind].push({ id: uid(), ...x }); this.persist(); render(); },
+    async remove(kind, id) { state[kind] = state[kind].filter(x => x.id !== id); this.persist(); render(); },
+  };
+
+  function dbBackend(db, id) {
+    const sref = db.doc('data/users/' + id + '/budget');
+    const cols = { expenses: sref.collection('expenses') };
+    return {
+      kind: 'db',
+      start() {
+        return new Promise(resolve => {
+          const got = { s: false, e: false }; let done = false;
+          const finish = () => { if (!done && got.s && got.e) { done = true; clearTimeout(loadTimer); resolve(); } };
+          loadTimer = setTimeout(() => setSaveState('Can’t reach your saved budget yet. Changes may not save.'), 10000);
+          sref.onSnapshot(snap => {
+            if (!snap.metadata.hasPendingWrites && !saveTimer && !saving) {
+              const d = snap.exists ? snap.data() : null;
+              if (d) { state.settings = normSettings(d); fillSettingsInputs(); }
+              if (state.ready) render();
+            }
+            if (!snap.metadata.fromCache) { got.s = true; finish(); }
+          }, err => { setSaveState('Saving stopped: ' + err.code); got.s = true; finish(); });
+          cols.expenses.onSnapshot(snap => {
+            state.expenses = snap.docs.map(x => ({ id: x.id, ...x.data() }));
+            if (state.ready) render();
+            if (!snap.metadata.fromCache) { got.e = true; finish(); }
+          }, err => { setSaveState('Stopped syncing expenses: ' + err.code); got.e = true; finish(); });
+        });
+      },
+      saveSettings(s) { return sref.set(JSON.parse(JSON.stringify(s))); },
+      async add(kind, x) { await cols[kind].add(x); },
+      async remove(kind, id) { await cols[kind].doc(id).delete(); },
+    };
+  }
+
+  function queueSave() { setSaveState('Saving…'); clearTimeout(saveTimer); saveTimer = setTimeout(flushSave, 500); }
+  async function flushSave() {
+    saveTimer = null;
+    if (saving) { dirty = true; return; }
+    saving = true;
+    try { await backend.saveSettings(state.settings); setSaveState(backend.kind === 'db' ? 'All changes saved' : window.payweekDesktop ? 'Saved on this computer' : 'Saved in this browser'); }
+    catch (e) { setSaveState('Couldn’t save (' + (e && e.code || 'error') + '). Try again in a moment.'); }
+    saving = false;
+    if (dirty) { dirty = false; flushSave(); }
+  }
+
+  async function initBackend() {
+    let db = null, id = null;
+    try {
+      if (window.claude && typeof window.claude.use === 'function') {
+        const [d, u] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+        db = d; id = u ? await u.id() : null;
+      }
+    } catch { db = null; }
+    backend = (db && id) ? dbBackend(db, id) : localBackend;
+    await backend.start();
+    setSaveState(backend.kind === 'db' ? 'Synced to your account' : window.payweekDesktop ? 'Saved on this computer' : 'Saved in this browser only');
+    state.ready = true;
+    fillSettingsInputs();
+    render();
+  }
+
+  // ---------- render ----------
+  function render() {
+    resetCum();
+    $('#tab-week').textContent = isWeekly() ? 'Week' : 'Pay period';
+    for (const v of ['week', 'month', 'year', 'dashboard']) { const a = $('#tab-' + v); if (v === state.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); }
+    renderSetup(); renderList('bills'); renderList('incomes'); updateQSum();
+    const el = $('#view');
+    if (!state.ready) { el.innerHTML = '<p class="muted">Loading your budget…</p>'; $('#totals').innerHTML = ''; return; }
+    el.setAttribute('aria-label', state.view + ' view');
+    if (state.view === 'month') renderMonth(el); else if (state.view === 'year') renderYear(el); else if (state.view === 'dashboard') renderDash(el); else renderWeek(el);
+    renderTotals($('#totals'));
+  }
+
+  // ----- line chart (hand-drawn SVG, redrawn at the container's real width) -----
+  // opts: { points: [{d: Date, ...}], series: [{key, name, color}], negKey?, height }
+  const chartRO = 'ResizeObserver' in window ? new ResizeObserver(entries => { for (const en of entries) if (en.target._draw) en.target._draw(); }) : null;
+  function niceTicks(lo, hi, n) {
+    const span = hi - lo || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || mag * 10;
+    const out = []; for (let v = Math.floor(lo / step) * step; v <= hi + 1e-9; v += step) out.push(round2(v));
+    return out;
+  }
+  function lineChart(box, opts) {
+    const { points, series, negKey } = opts, H = opts.height || 240;
+    const draw = () => {
+      const W = box.clientWidth; if (!W || !points.length) return;
+      const m = { l: 62, r: 14, t: 12, b: 28 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+      let lo = 0, hi = 0;
+      for (const p of points) for (const s of series) { lo = Math.min(lo, p[s.key]); hi = Math.max(hi, p[s.key]); }
+      const ticks = niceTicks(lo, hi, 4); lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+      const x = i => m.l + (points.length === 1 ? iw / 2 : i / (points.length - 1) * iw);
+      const y = v => m.t + (hi - v) / (hi - lo || 1) * ih;
+      const yTxt = v => Math.abs(v) >= 1000 ? (v < 0 ? '-' : '') + '$' + (Math.abs(v) / 1000).toFixed(Math.abs(v) >= 10000 ? 0 : 1) + 'k' : (v < 0 ? '-$' : '$') + Math.abs(Math.round(v));
+      // x labels at the first pay week of each month, thinned to fit
+      const monthIdx = []; points.forEach((p, i) => { if (i === 0 || p.d.getMonth() !== points[i - 1].d.getMonth()) monthIdx.push(i); });
+      const every = Math.max(1, Math.ceil(monthIdx.length / Math.max(1, Math.floor(iw / 70))));
+      const tIso = iso(today()); const ti = points.findIndex(p => iso(p.d) <= tIso && tIso <= iso(p.e || addDays(p.d, 6)));
+      let svg = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(opts.label)}">`;
+      if (negKey && lo < 0) svg += `<rect x="${m.l}" y="${y(0)}" width="${iw}" height="${y(lo) - y(0)}" style="fill:var(--neg-soft)"/>`;
+      for (const tv of ticks) svg += `<line x1="${m.l}" x2="${W - m.r}" y1="${y(tv)}" y2="${y(tv)}" style="stroke:var(--line)" stroke-width="${tv === 0 ? 1.5 : 1}" ${tv === 0 ? '' : 'stroke-dasharray="2 4"'}/>
+        <text x="${m.l - 8}" y="${y(tv) + 4}" text-anchor="end" class="ctick">${yTxt(tv)}</text>`;
+      monthIdx.forEach((i, k) => { if (k % every) return; const p = points[i]; svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" class="ctick">${fmtD(p.d, { month: 'short' })}${p.d.getMonth() === 0 || k === 0 ? ' ’' + String(p.d.getFullYear()).slice(2) : ''}</text>`; });
+      if (ti >= 0) svg += `<line x1="${x(ti)}" x2="${x(ti)}" y1="${m.t}" y2="${m.t + ih}" style="stroke:var(--muted)" stroke-dasharray="3 3"/><text x="${x(ti) + 4}" y="${m.t + 10}" class="ctick">Today</text>`;
+      for (const s of series) svg += `<path d="${points.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(p[s.key]).toFixed(1)).join('')}" fill="none" style="stroke:${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? 'stroke-dasharray="6 4"' : ''}/>`;
+      if (negKey) points.forEach((p, i) => { if (p[negKey] < 0) svg += `<circle cx="${x(i)}" cy="${y(p[negKey])}" r="4" style="fill:var(--neg);stroke:var(--surface)" stroke-width="2"/>`; });
+      svg += `<g class="chover" style="display:none"><line class="cx" y1="${m.t}" y2="${m.t + ih}" style="stroke:var(--ink)" stroke-opacity=".35"/>${series.map(s => `<circle r="4.5" style="fill:${s.color};stroke:var(--surface)" stroke-width="2"/>`).join('')}</g>`;
+      svg += `<rect class="chit" x="${m.l}" y="0" width="${iw}" height="${H}" fill="transparent" style="cursor:pointer"/></svg>`;
+      box.innerHTML = svg + '<div class="ctip" hidden></div>';
+      const hov = box.querySelector('.chover'), tip = box.querySelector('.ctip'), hit = box.querySelector('.chit');
+      const at = ev => { const r = box.getBoundingClientRect(); const px = ev.clientX - r.left; return Math.max(0, Math.min(points.length - 1, Math.round((px - m.l) / (iw || 1) * (points.length - 1)))); };
+      hit.addEventListener('pointermove', ev => {
+        const i = at(ev), p = points[i];
+        hov.style.display = ''; hov.querySelector('.cx').setAttribute('x1', x(i)); hov.querySelector('.cx').setAttribute('x2', x(i));
+        hov.querySelectorAll('circle').forEach((c, k) => { c.setAttribute('cx', x(i)); c.setAttribute('cy', y(p[series[k].key])); });
+        tip.hidden = false;
+        tip.innerHTML = `<b>${spanTxt(p.d, p.e || addDays(p.d, 6))}, ${p.d.getFullYear()}</b>${series.map(s => `<span><i style="background:${s.color}"></i>${s.name}<b class="${p[s.key] < 0 ? 'neg' : ''}">${money(p[s.key])}</b></span>`).join('')}<span class="muted small">Click to open this ${PN()}</span>`;
+        const tw = tip.offsetWidth; tip.style.left = Math.min(W - tw - 4, Math.max(4, x(i) + 12 + tw > W ? x(i) - tw - 12 : x(i) + 12)) + 'px'; tip.style.top = (m.t + 4) + 'px';
+      });
+      hit.addEventListener('pointerleave', () => { hov.style.display = 'none'; tip.hidden = true; });
+      hit.addEventListener('click', ev => { state.viewStart = iso(points[at(ev)].d); state.expDate = null; go('week'); scrollTop(); });
+    };
+    box._draw = draw; draw();
+    if (chartRO) chartRO.observe(box);
+  }
+
+  // ----- dashboard: everything entered, plus negative "Together" flags -----
+  function renderDash(el) {
+    const s = state.settings, t = today();
+    const st = trackStart();
+    const horizonY = Math.max(t.getFullYear(), state.year) + 1;      // look ahead through the end of next year
+    const horizon = new Date(horizonY, 11, 31);
+    // negative Together: pay weeks, months, years
+    const badW = [], badM = [], badY = [];
+    const pts = [];   // one point per pay week, for the line charts
+    for (let ws = weekStartFor(st); ws <= horizon; ws = nextPeriodStart(ws)) {
+      const v = cumWeek(ws); if (v != null && v < 0) badW.push({ ws, v, we: periodEnd(ws) });
+      const w = week(ws);
+      pts.push({ d: ws, e: w.end, together: v == null ? 0 : v, left: w.left, income: w.income, out: round2(w.bills + w.spent) });
+    }
+    for (let d = new Date(st.getFullYear(), st.getMonth(), 1); d <= horizon; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) { const v = cumMonth(d.getFullYear(), d.getMonth()); if (v != null && v < 0) badM.push({ d, v }); }
+    for (let y = st.getFullYear(); y <= horizonY; y++) { const v = cumYear(y); if (v != null && v < 0) badY.push({ y, v }); }
+    const nBad = badW.length + badM.length + badY.length;
+    const flagGroup = (title, items, html) => items.length ? `<div><p class="eyebrow">${title} – ${items.length}</p><div class="flaglist">${items.map(html).join('')}</div></div>` : '';
+    const alerts = nBad ? `<div class="alerts" role="alert">
+        <h3><span aria-hidden="true">⚠</span> "Together" goes below $0 – ${nBad} time${nBad === 1 ? '' : 's'}</h3>
+        <p class="small">Counting from ${longD(st)} through ${longD(horizon)}. Select one to open it.</p>
+        ${flagGroup(isWeekly() ? 'Pay weeks' : 'Pay periods', badW, x => `<button type="button" class="flag" data-act="openWeek" data-s="${iso(x.ws)}">${spanTxt(x.ws, x.we)}${x.ws.getFullYear() !== t.getFullYear() ? ', ' + x.ws.getFullYear() : ''} <span>·</span> ${money(x.v)}</button>`)}
+        ${flagGroup('Months', badM, x => `<button type="button" class="flag" data-act="openMonth" data-y="${x.d.getFullYear()}" data-m="${x.d.getMonth()}">${fmtD(x.d, { month: 'short', year: 'numeric' })} <span>·</span> ${money(x.v)}</button>`)}
+        ${flagGroup('Years', badY, x => `<button type="button" class="flag" data-act="openYear" data-y="${x.y}">${x.y} <span>·</span> ${money(x.v)}</button>`)}
+      </div>`
+      : `<div class="alerts ok"><h3><span aria-hidden="true">✓</span> "Together" stays at $0 or above</h3><p class="small">Checked every ${PN()}, month and year from ${longD(st)} through ${longD(horizon)}.</p></div>`;
+
+    // per-date changes (moves, edits, skips)
+    const keys = [...new Set([...Object.keys(s.moves || {}), ...Object.keys(s.edits || {})])];
+    const changes = keys.map(key => {
+      const at = key.lastIndexOf('@'), id = key.slice(0, at), from = key.slice(at + 1);
+      const kind = s.bills.some(b => b.id === id) ? 'bills' : s.incomes.some(b => b.id === id) ? 'incomes' : null;
+      if (!kind) return null;
+      const it = s[kind].find(b => b.id === id), o = (s.edits || {})[key] || {}, to = (s.moves || {})[key];
+      const what = [];
+      if (o.skip) what.push('Skipped');
+      if (to) what.push(`Moved to ${short(parse(to))}`);
+      if (o.amount != null) what.push(`${money(+it.amount)} → ${money(o.amount)}`);
+      if (o.name) what.push(`Renamed “${esc(o.name)}”`);
+      return { kind, it, key, from, date: to || from, what };
+    }).filter(Boolean).sort((a, b) => a.from < b.from ? -1 : 1);
+
+    const exps = [...state.expenses].sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+    const status = it => isEnded(it) ? '<span class="chip">Ended</span>' : '<span class="chip paid">Active</span>';
+    const itemRows = kind => s[kind].length ? s[kind].map(it => `<tr data-act="edit" data-kind="${kind}" data-id="${esc(it.id)}" tabindex="0" title="Edit in Pay &amp; bills">
+        <td><b>${esc(it.name)}</b></td><td>${cdot(itemColor(kind, it))}${catFor(kind, it)}</td><td class="small">${freqText(it)}</td>
+        <td class="r ${kind === 'incomes' ? 'inc' : ''}">${kind === 'incomes' ? '+' : ''}${money(+it.amount)}</td><td>${status(it)}</td></tr>`).join('')
+      : `<tr><td colspan="5" class="muted">None yet.</td></tr>`;
+    const sumBy = (list, f) => round2(list.reduce((t2, x) => t2 + (+f(x) || 0), 0));
+    const nPaid = Object.keys(s.paid || {}).length;
+    const head = cols => `<thead><tr>${cols.map(c => `<th class="${c.r ? 'r' : ''}">${c.t}</th>`).join('')}</tr></thead>`;
+
+    el.innerHTML = `
+      <div class="panel-head"><div><p class="eyebrow">Dashboard</p><h2>Everything you've entered</h2>
+        <p class="sub">Your pay, payments, income, one-time changes and logged spending, all in one place. Select a row to open or edit it.</p></div></div>
+      ${alerts}
+      <div class="dgrid">
+        <div class="card full"><div class="card-head"><h3>"Together" each ${isWeekly() ? 'pay week' : 'pay period'}</h3><span class="small muted">Red dots are below $0</span></div>
+          <div class="chart" id="chTogether"></div></div>
+        <div class="card full"><div class="card-head"><h3>Money in vs. out each ${isWeekly() ? 'pay week' : 'pay period'}</h3>
+          <div class="clegend"><span><i style="background:var(--pos)"></i>Income</span><span><i style="background:var(--bills)"></i>Payments + spent</span><span><i style="background:repeating-linear-gradient(90deg,var(--ink) 0 4px,transparent 4px 6px)"></i>Left over</span></div></div>
+          <div class="chart" id="chFlow"></div></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="eyebrow">Take-home pay · ${PAY_FREQS[payFreq()].toLowerCase()}</span><b>${s.weeklyPay != null && s.weeklyPay !== '' ? money(+s.weeklyPay) : '—'}</b><span class="small muted">${s.payday ? 'Starting day ' + longD(parse(s.payday)) : 'No starting day set'}</span></div>
+        <div class="stat"><span class="eyebrow">Payments</span><b>${s.bills.length}</b><span class="small muted">${money(sumBy(s.bills, b => b.amount))} each time, all together</span></div>
+        <div class="stat"><span class="eyebrow">Other income</span><b>${s.incomes.length}</b><span class="small muted">${money(sumBy(s.incomes, b => b.amount))} each time, all together</span></div>
+        <div class="stat"><span class="eyebrow">Spending logged</span><b>${money(sumBy(exps, x => x.amount))}</b><span class="small muted">${exps.length} expense${exps.length === 1 ? '' : 's'} · ${nPaid} payment${nPaid === 1 ? '' : 's'} marked paid</span></div>
+      </div>
+      <div class="dgrid">
+        <div class="card full"><div class="card-head"><h3>Payments</h3><span class="small muted">${s.bills.length}</span></div>
+          <div class="tablewrap dscroll"><table class="dtable">${head([{ t: 'Name' }, { t: 'Category' }, { t: 'Schedule' }, { t: 'Amount', r: 1 }, { t: 'Status' }])}<tbody>${itemRows('bills')}</tbody></table></div></div>
+        <div class="card full"><div class="card-head"><h3>Other income</h3><span class="small muted">${s.incomes.length}</span></div>
+          <div class="tablewrap dscroll"><table class="dtable">${head([{ t: 'Name' }, { t: 'Type' }, { t: 'Schedule' }, { t: 'Amount', r: 1 }, { t: 'Status' }])}<tbody>${itemRows('incomes')}</tbody></table></div></div>
+        <div class="card"><div class="card-head"><h3>One-time changes</h3><span class="small muted">${changes.length}</span></div>
+          <div class="tablewrap dscroll"><table class="dtable">${head([{ t: 'Item' }, { t: 'Usual date' }, { t: 'Change' }])}<tbody>${changes.length ? changes.map(c => `<tr data-act="editOcc" data-kind="${c.kind}" data-id="${esc(c.it.id)}" data-key="${esc(c.key)}" data-date="${c.date}" tabindex="0">
+            <td><b>${esc(c.it.name)}</b></td><td>${short(parse(c.from))}, ${parse(c.from).getFullYear()}</td><td class="small">${c.what.join(' · ')}</td></tr>`).join('') : '<tr><td colspan="3" class="muted">No single payments changed, moved or skipped.</td></tr>'}</tbody></table></div></div>
+        <div class="card"><div class="card-head"><h3>Spending logged</h3><span class="small muted">${money(sumBy(exps, x => x.amount))}</span></div>
+          <div class="tablewrap dscroll"><table class="dtable">${head([{ t: 'Date' }, { t: 'Category' }, { t: 'Note' }, { t: 'Amount', r: 1 }])}<tbody>${exps.length ? exps.map(x => `<tr data-act="openWeek" data-s="${iso(weekStartFor(parse(x.date)))}" tabindex="0">
+            <td>${short(parse(x.date))}, ${parse(x.date).getFullYear()}</td><td>${esc(x.category)}</td><td class="small muted">${esc(x.note || '')}</td><td class="r">${money(+x.amount)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">Nothing logged yet.</td></tr>'}</tbody></table></div></div>
+      </div>`;
+    if (chartRO) chartRO.disconnect();
+    lineChart($('#chTogether'), { points: pts, series: [{ key: 'together', name: 'Together', color: 'var(--accent)' }], negKey: 'together', label: `Together for each pay week from ${longD(st)}; ${badW.length} weeks below zero` });
+    lineChart($('#chFlow'), { points: pts, series: [{ key: 'income', name: 'Income', color: 'var(--pos)' }, { key: 'out', name: 'Payments + spent', color: 'var(--bills)' }, { key: 'left', name: 'Left over', color: 'var(--ink)', dash: true }], negKey: 'left', label: 'Income, payments plus spending, and left over for each pay week' });
+  }
+
+  // ----- left-over totals (always shown) -----
+  function renderTotals(el) {
+    const Y = state.year, t = today(), tIso = iso(t);
+    // Everything here counts only from the recent payday you entered; days before it count as $0.
+    const st = countFrom(), lr = counted;
+    const cwS = weekStartFor(t), cwE = periodEnd(cwS);
+    const cw = { ...lr(cwS, cwE), start: cwS, end: cwE };
+    const cm = lr(new Date(t.getFullYear(), t.getMonth(), 1), new Date(t.getFullYear(), t.getMonth() + 1, 0));
+    const yr = lr(new Date(Y, 0, 1), new Date(Y, 11, 31));
+    const ytdEnd = Y < t.getFullYear() ? new Date(Y, 11, 31) : t;
+    const ytd = Y > t.getFullYear() ? null : lr(new Date(Y, 0, 1), ytdEnd);
+    const fromTxt = d => st && iso(st) > iso(d) ? short(st) : 'Jan 1';
+    // same four figures in the compact bottom bar
+    const lv = (label, v) => `<span>${label} <b class="${v != null && v < 0 ? 'neg' : ''}">${v == null ? '—' : money(v)}</b></span>`;
+    $('#lbarVals').innerHTML = lv(isWeekly() ? 'This week' : 'This pay period', cw.left) + lv('This month', cm.left) + lv(`${Y} so far`, ytd ? ytd.left : null) + lv(`All of ${Y}`, yr.left);
+    const tile = (label, sub, v) => `<div class="stat left ${v != null && v < 0 ? 'neg' : ''}"><span class="eyebrow">${label}</span><b>${v == null ? '—' : money(v)}</b><span class="small muted">${sub}</span></div>`;
+    let run = 0; const tot = { income: 0, out: 0, left: 0 };
+    const rows = [];
+    for (let m = 0; m < 12; m++) {
+      const md = lr(new Date(Y, m, 1), new Date(Y, m + 1, 0));
+      const out = round2(md.bills + md.spent);
+      run = round2(run + md.left); tot.income += md.income; tot.out += out; tot.left += md.left;
+      const now = Y === t.getFullYear() && m === t.getMonth();
+      const past = new Date(Y, m + 1, 0) < t && !now;
+      rows.push(`<tr class="${now ? 'current' : past ? 'past' : ''}" tabindex="0" data-act="openMonth" data-m="${m}">
+        <td>${fmtD(new Date(Y, m, 1), { month: 'long' })}</td>
+        <td class="r inc">${money(md.income)}</td>
+        <td class="r">${money(out)}</td>
+        <td class="r left ${md.left < 0 ? 'neg' : ''}">${money(md.left)}</td>
+        <td class="r left ${run < 0 ? 'neg' : ''}">${money(run)}</td></tr>`);
+    }
+    el.innerHTML = `
+      <div class="panel-head">
+        <div><p class="eyebrow">Money left over</p><h2>Left over, added up</h2>
+          <p class="sub">What's left after payments and spending, totaled by week, month and year.</p></div>
+        <div class="seg"><button type="button" data-act="yr" data-n="-1" aria-label="Previous year">‹</button><button type="button" data-act="yrNow" ${Y === t.getFullYear() ? 'disabled' : ''}>${Y}</button><button type="button" data-act="yr" data-n="1" aria-label="Next year">›</button></div>
+      </div>
+      <div class="stats">
+        ${tile(isWeekly() ? 'This pay week' : 'This pay period',`${short(cw.start)} – ${short(cw.end)}`, cw.left)}
+        ${tile('This month', fmtD(t, { month: 'long', year: 'numeric' }), cm.left)}
+        ${tile(`${Y} so far`, ytd ? `${fromTxt(new Date(Y, 0, 1))} – ${short(ytdEnd)}` : 'Not started yet', ytd ? ytd.left : null)}
+        ${tile(`All of ${Y}`, `${fromTxt(new Date(Y, 0, 1))} – Dec 31, if all goes as planned`, yr.left)}
+      </div>
+      <div class="tablewrap"><table class="lefttable">
+        <thead><tr><th>Month</th><th class="r">Income</th><th class="r">Payments + spent</th><th class="r">Left over</th><th class="r">Running total</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+        <tfoot><tr><td>${Y}</td><td class="r">${money(round2(tot.income))}</td><td class="r">${money(round2(tot.out))}</td><td class="r ${tot.left < 0 ? 'neg' : ''}">${money(round2(tot.left))}</td><td class="r ${run < 0 ? 'neg' : ''}">${money(run)}</td></tr></tfoot>
+      </table></div>
+      <p class="note-bar">${st ? `Counting starts on your starting day, ${longD(st)}. Anything before it counts as $0.` : 'Set a starting day under Pay &amp; bills and counting will start from that date.'} Running total adds each month's left over to the months before it.</p>`;
+  }
+
+  function renderSetup() {
+    const s = state.settings, need = [];
+    if (s.weeklyPay == null || s.weeklyPay === '') need.push('your take-home pay');
+    if (!s.payday) need.push('a starting day');
+    const el = $('#setup');
+    if (!state.ready || !need.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="setup">
+      <div><h3>Add ${need.join(' and ')}</h3>
+      <p class="small muted">${s.payday ? '' : 'Until then, pay weeks assume you’re paid on Fridays. '}You can set this under Pay &amp; bills.</p></div>
+      <div class="seg"><button type="button" data-act="goSettings" class="primary">Set up pay</button></div></div>`;
+  }
+
+  function catStrip(payments) {
+    const tot = Object.fromEntries(BILL_CATS.map(c => [c, 0])), cnt = { ...tot };
+    for (const p of payments) { const c = catOf(p.bill); tot[c] += +p.bill.amount || 0; cnt[c]++; }
+    const all = Math.max(BILL_CATS.reduce((t, c) => t + tot[c], 0), 1);
+    return `<div class="catstrip" aria-label="Payments by category">${BILL_CATS.map(c => `<div class="catbox ${tot[c] ? '' : 'zero'}">
+      <span class="eyebrow">${cdot(colorOf('bills', c))}${c}</span><b>${money(round2(tot[c]))}</b>
+      <span class="small muted">${cnt[c]} payment${cnt[c] === 1 ? '' : 's'} · ${Math.round(tot[c] / all * 100)}%</span>
+      <span class="share"><i style="width:${(tot[c] / all * 100).toFixed(1)}%;background:${colorOf('bills', c)}"></i></span></div>`).join('')}</div>`;
+  }
+
+  // Lines under each Left over figure: the previous period's left over, and the running "Together" total
+  const carry = (label, prev, together) => `<div class="carry">
+      <span>${label} left: <strong class="${prev < 0 ? 'neg' : ''}">${money(prev)}</strong></span>
+      ${together == null ? '' : `<span title="Every left over added up since ${longD(trackStart())}">Together: <strong class="${together < 0 ? 'neg' : ''}">${money(together)}</strong></span>`}</div>`;
+  const yearFirstWeek = Y => { const j = new Date(Y, 0, 1); let s = periodStartFor(j); if (iso(s) < iso(j)) s = nextPeriodStart(s); return s; };
+  function yearLeft(Y) { let s = yearFirstWeek(Y), t = 0; while (s.getFullYear() === Y) { t += week(s).left; s = nextPeriodStart(s); } return round2(t); }
+  // Together through any date (used by the month calendar's 7-day rows)
+  function cumThrough(e) { const st = trackStart(); return iso(e) < iso(st) ? null : range(st, e).left; }
+
+  // Running "Together" totals: each period's left over plus the Together of the period before.
+  // They start on the payday you entered (or January 1 of this year if none is set).
+  const trackStart = () => state.settings.payday ? parse(state.settings.payday) : new Date(today().getFullYear(), 0, 1);
+  let cum = null;
+  const resetCum = () => { cum = null; };
+  function cumWeek(S) {
+    const first = weekStartFor(trackStart()), k = iso(S);
+    if (k < iso(first)) return null;
+    if (!cum || cum.first !== iso(first)) cum = { first: iso(first), next: first, total: 0, map: new Map() };
+    while (iso(cum.next) <= k) { cum.total = round2(cum.total + week(cum.next).left); cum.map.set(iso(cum.next), cum.total); cum.next = nextPeriodStart(cum.next); }
+    return cum.map.has(k) ? cum.map.get(k) : null;
+  }
+  function cumMonth(y, m) {
+    const st = trackStart();
+    if (y < st.getFullYear() || (y === st.getFullYear() && m < st.getMonth())) return null;
+    let t = 0;
+    // first month counts from the payday itself, later months in full
+    for (let d = st; d.getFullYear() < y || (d.getFullYear() === y && d.getMonth() <= m); d = new Date(d.getFullYear(), d.getMonth() + 1, 1))
+      t += range(d, new Date(d.getFullYear(), d.getMonth() + 1, 0)).left;
+    return round2(t);
+  }
+  // a year's Together is the Together of the last pay week that starts in that year
+  // a year's Together = the Together through December of that year (same as the month running total)
+  function cumYear(Y) { return cumMonth(Y, 11); }
+
+  // "Nov 6 – 12" or "Oct 30 – Nov 5"
+  const spanTxt = (a, b) => a.getMonth() === b.getMonth() ? `${short(a)} – ${b.getDate()}` : `${short(a)} – ${short(b)}`;
+  // ‹ previous · this period · next › buttons, each showing its dates
+  const navSeg = (act, nowAct, isNow, prevTxt, nowTxt, nextTxt, prevAria, nextAria) => `<div class="seg nav">
+      <button type="button" data-act="${act}" data-n="-1" aria-label="${prevAria}: ${prevTxt.replace('‹ ', '')}">${prevTxt}</button>
+      <button type="button" data-act="${nowAct}" ${isNow ? 'disabled aria-current="true"' : `title="Back to today" aria-label="${nowTxt}. Back to today"`}>${nowTxt}${isNow ? '' : ' <span aria-hidden="true">↺</span>'}</button>
+      <button type="button" data-act="${act}" data-n="1" aria-label="${nextAria}: ${nextTxt.replace(' ›', '')}">${nextTxt}</button></div>`;
+
+  const incomeNote = w => !w.extra ? (w.pay ? 'Pay' : 'Pay not set') : `${money(w.pay)} pay + ${money(w.extra)} other`;
+
+  // ----- week -----
+  function renderWeek(el) {
+    const t = today(), tIso = iso(t);
+    const cur = weekStartFor(t);
+    const start = state.viewStart ? periodStartFor(parse(state.viewStart)) : cur;
+    const w = week(start);
+    const nDays = diffDays(start, w.end) + 1, pn = PN();
+    const isCur = iso(start) === iso(cur), isPast = w.e < tIso;
+    const nextPay = nextPeriodStart(cur), daysToPay = diffDays(t, nextPay);
+    const sub = isCur
+      ? (diffDays(cur, t) === 0 ? 'Payday is today.' : `Next payday ${wkday(nextPay)}, ${short(nextPay)} · ${daysToPay} day${daysToPay === 1 ? '' : 's'} away`)
+      : isPast ? `A past ${pn}` : `Starts in ${diffDays(t, start)} days`;
+    const daysLeft = isCur ? nDays - diffDays(start, t) : nDays;
+    const perDay = w.left > 0 && !isPast ? w.left / daysLeft : 0;
+    const total = Math.max(w.income, w.bills + w.spent, 1);
+    const pct = v => (Math.max(0, v) / total * 100).toFixed(2) + '%';
+    const defDate = (state.expDate && state.expDate >= w.s && state.expDate <= w.e) ? state.expDate : (tIso >= w.s && tIso <= w.e) ? tIso : w.s;
+    const pw = prevPeriodStart(start), nw = nextPeriodStart(start);
+    const navWeek = navSeg('wk', 'wkNow', isCur,
+      `‹ ${spanTxt(pw, periodEnd(pw))}`, `${isCur ? 'This ' + pn : isWeekly() ? 'Week of' : 'Pay period'} · ${spanTxt(start, w.end)}`, `${spanTxt(nw, periodEnd(nw))} ›`,
+      'Previous ' + pn, 'Next ' + pn);
+
+    const editBtn = p => `<button type="button" class="ghost" data-act="editOcc" data-kind="bills" data-id="${esc(p.bill.id)}" data-key="${esc(p.key)}" data-date="${p.date}" aria-label="Edit ${esc(p.bill.name)} on ${short(p.d)} only">Edit</button>`;
+    const skippedBills = w.skipped.filter(p => p.kind === 'bills');
+    const billsHtml = (w.payments.length || skippedBills.length) ? w.payments.map(p => {
+      const paid = !!state.settings.paid[p.key];
+      const chip = paid ? '<span class="chip paid">Paid</span>' : p.date < tIso ? '<span class="chip over">Overdue</span>' : p.date === tIso ? '<span class="chip today">Due today</span>' : `<span class="chip">Due ${wkday(p.d)}</span>`;
+      return `<div class="billrow has-edit ${paid ? 'paid' : ''}">
+        <input type="checkbox" id="pd-${esc(p.key)}" data-act="paid" data-key="${esc(p.key)}" ${paid ? 'checked' : ''} aria-label="Mark ${esc(p.bill.name)} paid">
+        <label for="pd-${esc(p.key)}" style="min-width:0"><div class="name">${cdot(itemColor('bills', p.bill))}${esc(p.bill.name)}</div><div class="small muted">${catOf(p.bill)} ·${wkday(p.d)}, ${short(p.d)} · ${chip}${p.moved ? ` <span class="chip moved">Moved from ${short(parse(p.from))}</span>` : ''}${p.edited ? ' <span class="chip edited">Changed</span>' : ''}</div></label>
+        <b class="num">${money(+p.bill.amount)}</b>${editBtn(p)}</div>`;
+    }).join('') + skippedBills.map(p => `<div class="billrow has-edit skipped">
+        <span></span>
+        <div style="min-width:0"><div class="name">${esc(p.bill.name)}</div><div class="small muted">${wkday(p.d)}, ${short(p.d)} · <span class="chip">Skipped</span></div></div>
+        <b class="num">${money(+p.bill.amount)}</b>${editBtn(p)}</div>`).join('') : `<p class="empty">No payments due this ${pn}.</p>`;
+
+    const perD = [];
+    for (let i = 0; i < nDays; i++) { const d = addDays(start, i), di = iso(d); perD.push({ d, di, amt: sum(w.exps.filter(x => x.date === di), x => x.amount) }); }
+    const max = Math.max(...perD.map(x => x.amt), 1);
+    const bars = perD.map(x => `<div class="day ${x.di === tIso ? 'is-today' : ''} ${x.di > tIso ? 'future' : ''}" title="${wkday(x.d)} ${short(x.d)}: ${money(x.amt)}">
+        <span class="amt">${x.amt ? moneyShort(x.amt) : ''}</span>
+        <div class="bar ${x.amt ? '' : 'zero'}" style="height:${x.amt ? Math.max(4, x.amt / max * 88) : 2}px"></div>
+        <span class="lbl">${nDays <= 14 ? wkday(x.d).slice(0, 2) + ' ' : ''}${x.d.getDate()}</span></div>`).join('');
+
+    const expRow = x => `<div class="exprow">
+        <span class="muted">${wkday(parse(x.date))} ${parse(x.date).getDate()}</span>
+        <span class="what"><b>${esc(x.category)}</b>${x.note ? ' <span class="muted">· ' + esc(x.note) + '</span>' : ''}</span>
+        <b class="num">${money(+x.amount)}</b>
+        <button type="button" class="ghost" data-act="delExp" data-id="${esc(x.id)}" aria-label="Delete expense">✕</button></div>`;
+
+    el.innerHTML = `
+      <div class="panel-head">
+        <div><p class="eyebrow">${isWeekly() ? (isCur ? 'This pay week' : 'Pay week') : (isCur ? 'This pay period' : 'Pay period') + ' · ' + PAY_FREQS[payFreq()].toLowerCase() + ' pay'}</p>
+          <h2>${wkday(start)}, ${short(start)} – ${wkday(w.end)}, ${short(w.end)}</h2><p class="sub">${sub}</p></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="eyebrow"><i class="dot" style="background:var(--pos)"></i>Income</span><b>${money(w.income)}</b><span class="small muted">${incomeNote(w)}</span></div>
+        <div class="stat"><span class="eyebrow"><i class="dot" style="background:var(--bills)"></i>Bills due</span><b>${money(w.bills)}</b><span class="small muted">${w.payments.length} payment${w.payments.length === 1 ? '' : 's'}</span></div>
+        <div class="stat"><span class="eyebrow"><i class="dot" style="background:var(--spent)"></i>Spent</span><b>${money(w.spent)}</b><span class="small muted">${w.exps.length} expense${w.exps.length === 1 ? '' : 's'}</span></div>
+        <div class="stat left ${w.left < 0 ? 'neg' : ''}"><span class="eyebrow"><i class="dot" style="background:var(--accent)"></i>Left over</span><b>${money(w.left)}</b>
+          <span class="small muted">${w.left < 0 ? 'Over by ' + money(-w.left) : perDay ? money(perDay) + '/day for ' + daysLeft + ' day' + (daysLeft === 1 ? '' : 's') : isPast ? (isWeekly() ? 'Week ended' : 'Pay period ended') : ''}</span>
+          ${carry(isWeekly() ? 'Last week' : 'Last pay period', week(pw).left, cumWeek(start))}</div>
+      </div>
+      <div class="navrow">${navWeek}</div>
+      <div class="meter" role="img" aria-label="Bills ${money(w.bills)}, spent ${money(w.spent)}, left ${money(Math.max(0, w.left))} of ${money(w.income)} income">
+        <i style="width:${pct(w.bills)};background:var(--bills)"></i><i style="width:${pct(w.spent)};background:var(--spent)"></i><i style="width:${pct(w.left)};background:var(--accent);opacity:.35"></i>
+      </div>
+      ${catStrip(w.payments)}
+      <div class="grid2">
+        <div class="card">
+          <div class="card-head"><h3>Payments this ${pn}</h3><span class="small muted">${money(w.bills)}</span></div>
+          <div>${billsHtml}</div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Spending by day</h3><span class="small muted">${money(w.spent)} total</span></div>
+          <div class="days" aria-label="Spending per day" style="grid-template-columns:repeat(${nDays}, minmax(0, 1fr));gap:${nDays > 14 ? 2 : nDays > 7 ? 4 : 6}px">${bars}</div>
+          <form class="miniform" id="expform" autocomplete="off">
+            <label class="field">Amount<div class="money-in"><span>$</span><input id="eAmt" type="number" inputmode="decimal" min="0.01" step="0.01" required></div></label>
+            <label class="field">Category<select id="eCat">${CATS.map(c => `<option>${c}</option>`).join('')}</select></label>
+            <label class="field">Date<input id="eDate" type="date" value="${defDate}" min="${w.s}" max="${w.e}" required></label>
+            <label class="field wide">Note (optional)<input id="eNote" maxlength="80" placeholder="Where or what"></label>
+            <button class="primary" type="submit">Log expense</button>
+          </form>
+          <div class="tomonth">${[start, w.end].filter((d, i, a) => i === 0 || d.getMonth() !== a[0].getMonth()).map(d =>
+            `<button type="button" data-act="openMonth" data-y="${d.getFullYear()}" data-m="${d.getMonth()}"><span aria-hidden="true">▦</span> See ${fmtD(d, { month: 'long', year: 'numeric' })} in Month view</button>`).join('')}</div>
+          <div>${w.exps.length ? w.exps.map(expRow).join('') : `<p class="empty">Nothing logged yet this ${pn}.</p>`}</div>
+        </div>
+      </div>
+      <div class="viewfoot">${navWeek}</div>`;
+  }
+
+  // ----- month -----
+  function renderMonth(el) {
+    const { y, m } = state.month;
+    const t = today(), tIso = iso(t);
+    const first = new Date(y, m, 1), last = new Date(y, m + 1, 0);
+    const md = counted(first, last);
+    // rows are 7 days; for weekly pay each row is exactly one pay week
+    let ws = calRowStart(first);
+    const heads = [];
+    for (let i = 0; i < 7; i++) heads.push(`<div class="hd">${wkday(addDays(ws, i))}${i === 0 && isWeekly() ? ' · payday' : ''}</div>`);
+    heads.push(`<div class="hd">${isWeekly() ? 'Pay week' : 'This row'}</div>`);
+    const cells = [];
+    const payAmt = +state.settings.weeklyPay || 0;
+    while (ws <= last) {
+      const w = range(ws, addDays(ws, 6));
+      const rowCls = (w.s <= tIso && tIso <= w.e) ? 'row-current' : '';
+      for (let i = 0; i < 7; i++) {
+        const d = addDays(ws, i), di = iso(d);
+        const out = d.getMonth() !== m;
+        const pays = w.payments.filter(p => p.date === di);
+        const exs = w.extras.filter(x => x.date === di);
+        const sp = sum(w.exps.filter(x => x.date === di), x => x.amount);
+        const movedTip = o => o.moved ? ` (moved from ${short(parse(o.from))})` : '';
+        cells.push(`<div class="cell ${out ? 'out' : ''} ${di === tIso ? 'today' : ''} ${rowCls}" data-act="openWeek" data-s="${w.s}" data-day="${di}" tabindex="0" title="${fmtD(d, { weekday: 'long', month: 'long', day: 'numeric' })}">
+          <span class="dn">${d.getDate()}</span>
+          ${payAmt && isPayday(d) ? `<span class="pill inc" title="Payday">+${money(payAmt)} pay</span>` : ''}
+          ${exs.map(x => `<span class="pill inc tinted drag ${x.moved ? 'moved' : ''} ${x.edited ? 'edited' : ''}" style="--pc:${itemColor('incomes', x.item)}" draggable="true" data-act="editOcc" data-kind="incomes" data-drag="incomes" data-id="${esc(x.item.id)}" data-key="${esc(x.key)}" data-date="${x.date}" title="${esc(x.item.name)} ${money(+x.item.amount)}${movedTip(x)} · click to edit this one, drag to move">${x.edited ? '✎ ' : ''}${x.moved ? '↪ ' : ''}+${money(+x.item.amount)} ${esc(x.item.name)}</span>`).join('')}
+          ${pays.map(p => `<span class="pill bill tinted drag ${state.settings.paid[p.key] ? 'done' : ''} ${p.moved ? 'moved' : ''} ${p.edited ? 'edited' : ''}" style="--pc:${itemColor('bills', p.bill)}" draggable="true" data-act="editOcc" data-kind="bills" data-drag="bills" data-id="${esc(p.bill.id)}" data-key="${esc(p.key)}" data-date="${p.date}" title="${esc(p.bill.name)} ${money(+p.bill.amount)}${movedTip(p)} · click to edit this one, drag to move">${p.edited ? '✎ ' : ''}${p.moved ? '↪ ' : ''}${esc(p.bill.name)} ${money(+p.bill.amount)}</span>`).join('')}
+          ${w.skipped.filter(o => o.date === di).map(o => `<span class="pill skip" data-act="editOcc" data-kind="${o.kind}" data-id="${esc(o.item.id)}" data-key="${esc(o.key)}" data-date="${o.date}" title="${esc(o.item.name)} skipped · click to edit">${esc(o.item.name)}</span>`).join('')}
+          ${sp ? `<span class="pill sp">Spent ${money(sp)}</span>` : ''}
+        </div>`);
+      }
+      cells.push(`<div class="wsum ${rowCls}" data-act="openWeek" data-s="${w.s}" tabindex="0">
+        <span class="muted">${short(w.start)} – ${short(w.end)}</span>
+        <span>In <span style="color:var(--pos)">${money(w.income)}</span></span>
+        <span>Due ${money(w.bills)}</span>
+        <b class="${w.left < 0 ? 'neg' : ''}">Left ${money(w.left)}</b>
+        ${(() => { const tog = isWeekly() ? cumWeek(ws) : cumThrough(w.end); return tog == null ? '' : `<span class="wcarry"><b class="${tog < 0 ? 'neg' : ''}">Together ${money(tog)}</b></span>`; })()}</div>`);
+      ws = addDays(ws, 7);
+    }
+    const isNow = y === t.getFullYear() && m === t.getMonth();
+    const mLabel = d => fmtD(d, d.getFullYear() === y ? { month: 'long' } : { month: 'long', year: 'numeric' });
+    const navMonth = navSeg('mo', 'moNow', isNow,
+      `‹ ${mLabel(new Date(y, m - 1, 1))}`, `${isNow ? 'This month · ' : ''}${fmtD(first, { month: 'long', year: 'numeric' })}`, `${mLabel(new Date(y, m + 1, 1))} ›`,
+      'Previous month', 'Next month');
+    el.innerHTML = `
+      <div class="panel-head">
+        <div><p class="eyebrow">Month</p><h2>${fmtD(first, { month: 'long', year: 'numeric' })}</h2>
+          <p class="sub">${isWeekly() ? 'Each calendar row is one pay week.' : 'Paydays show as +pay. The right column totals each 7-day row.'} Select a day to open its ${PN()} and log spending for that date.</p></div>
+      </div>
+      <div class="stats">
+        <div class="stat"><span class="eyebrow"><i class="dot" style="background:var(--pos)"></i>Income</span><b>${money(md.income)}</b><span class="small muted">${incomeNote(md)}</span></div>
+        <div class="stat"><span class="eyebrow"><i class="dot" style="background:var(--bills)"></i>Payments</span><b>${money(md.bills)}</b><span class="small muted">${md.payments.length} payment${md.payments.length === 1 ? '' : 's'}</span></div>
+        <div class="stat"><span class="eyebrow"><i class="dot" style="background:var(--spent)"></i>Spent</span><b>${money(md.spent)}</b><span class="small muted">${md.exps.length} expense${md.exps.length === 1 ? '' : 's'}</span></div>
+        <div class="stat left ${md.left < 0 ? 'neg' : ''}"><span class="eyebrow"><i class="dot" style="background:var(--accent)"></i>Left over</span><b>${money(md.left)}</b><span class="small muted">${md.before ? 'Before your starting day, not counted' : md.clipped ? `${short(countFrom())} – ${short(last)}, from your starting day` : `For ${fmtD(first, { month: 'long' })} 1–${last.getDate()}`}</span>
+          ${carry(fmtD(new Date(y, m - 1, 1), { month: 'long' }), counted(new Date(y, m - 1, 1), new Date(y, m, 0)).left, cumMonth(y, m))}</div>
+      </div>
+      <div class="navrow">${navMonth}</div>
+      ${catStrip(md.payments)}
+      <p class="note-bar">Click a payment or income to change just that one: its amount, name or date, or skip it. ✎ marks one you changed. You can also drag it onto another day to move it. A one-time item just gets its new date. A repeating item moves only that one time and is marked <b>↪ Moved</b>. Drag it back to its original day to undo.</p>
+      <div class="calwrap"><div class="cal">${heads.join('')}${cells.join('')}</div></div>
+      <p class="note-bar">Month totals count only days inside ${fmtD(first, { month: 'long' })}. The right column counts the whole row, even the days that fall in the next or previous month.</p>
+      <div class="viewfoot">${navMonth}</div>`;
+  }
+
+  // ----- year -----
+  function renderYear(el) {
+    const Y = state.year, t = today(), tIso = iso(t);
+    const yc = counted(new Date(Y, 0, 1), new Date(Y, 11, 31)); // same figures as "Left over, added up"
+    const navYear = navSeg('yr', 'yrNow', Y === t.getFullYear(), `‹ ${Y - 1}`, `${Y === t.getFullYear() ? 'This year · ' : ''}${Y}`, `${Y + 1} ›`, 'Previous year', 'Next year');
+    let start = yearFirstWeek(Y);
+    const rows = []; let n = 1;
+    const tot = { income: 0, bills: 0, spent: 0, left: 0 };
+    while (start.getFullYear() === Y) {
+      const w = week(start);
+      for (const k in tot) tot[k] += w[k];
+      const runL = round2(tot.left);
+      const cls = [w.e < tIso ? 'past' : '', (w.s <= tIso && tIso <= w.e) ? 'current' : ''].join(' ');
+      const pays = w.payments.length ? '<div class="pays">' + w.payments.map(p => `<span class="pay tinted ${state.settings.paid[p.key] ? 'done' : ''} ${p.moved ? 'moved' : ''}" style="--pc:${itemColor('bills', p.bill)}">${esc(p.bill.name)} ${money(+p.bill.amount)} <em>${wkday(p.d)} ${short(p.d)}${p.moved ? ' · moved' : ''}</em></span>`).join('') + '</div>' : '<span class="muted">—</span>';
+      rows.push(`<tr class="${cls}" tabindex="0" data-act="openWeek" data-s="${w.s}">
+        <td class="wk">${n}</td>
+        <td class="dates">${short(w.start)} – ${short(w.end)}</td>
+        <td class="r inc">${money(w.income)}${w.extra ? `<div class="small muted">incl. ${money(w.extra)} other</div>` : ''}</td>
+        <td>${pays}</td>
+        <td class="r">${money(w.bills)}</td>
+        <td class="r">${w.spent ? money(w.spent) : '<span class="muted">—</span>'}</td>
+        <td class="r left ${w.left < 0 ? 'neg' : ''}">${money(w.left)}</td>
+        <td class="r ${runL < 0 ? 'neg' : ''}">${money(runL)}</td></tr>`);
+      start = nextPeriodStart(start); n++;
+    }
+    const months = [];
+    for (let m = 0; m < 12; m++) {
+      const md = counted(new Date(Y, m, 1), new Date(Y, m + 1, 0));
+      const tt = Math.max(md.income, md.bills + md.spent, 1);
+      const now = Y === t.getFullYear() && m === t.getMonth();
+      months.push(`<button type="button" class="mcard ${now ? 'now' : ''}" data-act="openMonth" data-m="${m}">
+        <span class="mname">${fmtD(new Date(Y, m, 1), { month: 'long' })}</span>
+        <b class="${md.left < 0 ? 'neg' : ''}">${money(md.left)}</b>
+        <span class="small muted">In ${moneyShort(md.income)} · Out ${moneyShort(md.bills + md.spent)}</span>
+        <span class="mbar"><i style="width:${(md.bills / tt * 100).toFixed(1)}%;background:var(--bills)"></i><i style="width:${(md.spent / tt * 100).toFixed(1)}%;background:var(--spent)"></i></span>
+      </button>`);
+    }
+    el.innerHTML = `
+      <div class="panel-head">
+        <div><p class="eyebrow">Year</p><h2>${Y} by ${PN()}</h2><p class="sub">One row per ${PN()} (${PAY_FREQS[payFreq()].toLowerCase()} pay), payday through the day before the next. Select a month or a row to open it.</p></div>
+      </div>
+      <div class="yearsum">
+        <div><span class="eyebrow">Income</span><b style="color:var(--pos)">${money(yc.income)}</b></div>
+        <div><span class="eyebrow">Payments</span><b>${money(yc.bills)}</b></div>
+        <div><span class="eyebrow">Logged spending</span><b>${money(yc.spent)}</b></div>
+        <div><span class="eyebrow">Left over</span><b style="color:${yc.left < 0 ? 'var(--neg)' : 'var(--ink)'}">${money(yc.left)}</b>${carry(String(Y - 1), counted(new Date(Y - 1, 0, 1), new Date(Y - 1, 11, 31)).left, cumYear(Y))}
+          <span class="small muted">${yc.before ? 'Before your starting day, not counted' : yc.clipped ? `${short(countFrom())} – Dec 31, from your starting day` : 'Jan 1 – Dec 31'}</span></div>
+      </div>
+      <div class="navrow">${navYear}</div>
+      ${catStrip(yc.payments)}
+      <div class="months">${months.join('')}</div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>#</th><th>Dates</th><th class="r">Income</th><th>Payments due</th><th class="r">Total due</th><th class="r">Spent</th><th class="r">Left over</th><th class="r">Running total</th></tr></thead>
+        <tbody>${rows.join('')}</tbody>
+        <tfoot><tr><td></td><td>${rows.length} ${isWeekly() ? 'weeks' : 'pay periods'}</td><td class="r">${money(tot.income)}</td><td></td><td class="r">${money(tot.bills)}</td><td class="r">${money(tot.spent)}</td><td class="r ${tot.left < 0 ? 'neg' : ''}">${money(tot.left)}</td><td class="r ${tot.left < 0 ? 'neg' : ''}">${money(tot.left)}</td></tr></tfoot>
+      </table></div>
+      <p class="note-bar">Left over = income (weekly pay + other income) − payments due − spending you logged.</p>
+      <div class="viewfoot">${navYear}</div>`;
+  }
+
+  // ---------- pay & bills / other income forms ----------
+  const KINDS = {
+    bills: { p: 'b', nameLabel: 'Payment', placeholder: 'Rent, phone, car…', defFreq: 'monthly', freqs: ['monthly', 'weekly', 'biweekly', 'yearly', 'once'], empty: 'No payments yet. Add rent, utilities, subscriptions, loans, anything you pay on a schedule.' },
+    incomes: { p: 'i', nameLabel: 'Income', placeholder: 'Overtime, side job…', defFreq: 'once', freqs: ['once', 'weekly', 'biweekly', 'monthly', 'yearly'], empty: 'No other income yet.' },
+  };
+  function buildForm(kind) {
+    const k = KINDS[kind], p = k.p;
+    $('#form-' + kind).innerHTML = `
+      <label class="field span2">${k.nameLabel}<input id="${p}Name" placeholder="${k.placeholder}" required maxlength="60"></label>
+      <label class="field">Amount<div class="money-in"><span>$</span><input id="${p}Amt" type="number" inputmode="decimal" min="0" step="0.01" required></div></label>
+      <label class="field">How often<select id="${p}Freq">${k.freqs.map(f => `<option value="${f}" ${f === k.defFreq ? 'selected' : ''}>${FREQ[f]}</option>`).join('')}</select></label>
+      <label class="field"><span id="${p}WhenText">Day of month</span>
+        <input id="${p}Day" type="number" min="1" max="31" placeholder="1–31">
+        <input id="${p}Date" type="date" hidden></label>
+      <label class="field" id="${p}EndsLbl">Ends<select id="${p}Ends"><option value="never">Never</option><option value="date">On a date</option><option value="count">After a number of times</option></select></label>
+      <label class="field" id="${p}EndValLbl" hidden><span id="${p}EndValText">End date</span>
+        <input id="${p}EndDate" type="date">
+        <input id="${p}Count" type="number" min="1" max="999" step="1" placeholder="Times" hidden></label>
+      <div class="actions"><button class="primary" type="submit" id="${p}Submit">Add</button><button type="button" id="${p}Cancel" hidden>Cancel</button></div>`;
+    const sync = () => syncForm(kind);
+    $('#' + p + 'Freq').addEventListener('change', sync);
+    $('#' + p + 'Ends').addEventListener('change', sync);
+    $('#' + p + 'Cancel').addEventListener('click', () => resetForm(kind));
+    $('#form-' + kind).addEventListener('submit', e => { e.preventDefault(); submitForm(kind); });
+    sync();
+  }
+  function syncForm(kind) {
+    const p = KINDS[kind].p, f = $('#' + p + 'Freq').value, ends = $('#' + p + 'Ends').value;
+    const once = f === 'once', bounded = !once && ends !== 'never';
+    const useDay = f === 'monthly' && !bounded;
+    const set = (id, hidden) => { const el = $('#' + p + id); el.hidden = hidden; if (el.tagName === 'INPUT') el.required = !hidden; };
+    set('Day', !useDay); set('Date', useDay);
+    $('#' + p + 'WhenText').textContent = useDay ? 'Day of month' : once ? 'Date' : bounded ? 'First date' : (f === 'weekly' || f === 'biweekly') ? 'Any date it happens' : 'Date';
+    $('#' + p + 'EndsLbl').hidden = once;
+    $('#' + p + 'EndValLbl').hidden = !bounded;
+    set('EndDate', !(bounded && ends === 'date'));
+    set('Count', !(bounded && ends === 'count'));
+    $('#' + p + 'EndValText').textContent = ends === 'count' ? 'How many times' : 'Last date';
+  }
+  function resetForm(kind) {
+    const p = KINDS[kind].p;
+    state.editing[kind] = null; $('#form-' + kind).reset();
+    $('#' + p + 'Freq').value = KINDS[kind].defFreq; syncForm(kind);
+    $('#' + p + 'Submit').textContent = 'Add'; $('#' + p + 'Cancel').hidden = true;
+  }
+  function submitForm(kind) {
+    const p = KINDS[kind].p, v = id => $('#' + p + id).value;
+    const freq = v('Freq'), ends = freq === 'once' ? 'never' : v('Ends');
+    const it = { id: state.editing[kind] || uid(), name: v('Name').trim(), amount: round2(Math.max(0, +v('Amt') || 0)), freq, ends };
+    if (!it.name) return;
+    if (freq === 'monthly' && ends === 'never') it.day = Math.min(31, Math.max(1, parseInt(v('Day'), 10) || 1));
+    else { it.date = v('Date'); if (!it.date) return; }
+    if (ends === 'date') { it.endDate = v('EndDate'); if (!it.endDate) return; if (it.endDate < it.date) { $('#' + p + 'EndDate').setCustomValidity('The last date must be on or after the first date.'); $('#' + p + 'EndDate').reportValidity(); return; } }
+    if (ends === 'count') { it.count = Math.max(1, parseInt(v('Count'), 10) || 1); }
+    const list = state.settings[kind], i = list.findIndex(x => x.id === it.id);
+    it.cat = i >= 0 ? catFor(kind, list[i]) : CATS_BY[kind][0];
+    if (i >= 0) list[i] = it; else list.push(it);
+    resetForm(kind); render(); queueSave();
+    $('#' + p + 'Name').focus();
+  }
+  function editItem(kind, id) {
+    const it = state.settings[kind].find(x => x.id === id); if (!it) return;
+    const p = KINDS[kind].p;
+    state.editing[kind] = id;
+    $('#' + p + 'Name').value = it.name; $('#' + p + 'Amt').value = it.amount;
+    $('#' + p + 'Freq').value = it.freq; $('#' + p + 'Ends').value = it.ends || 'never';
+    syncForm(kind);
+    if (it.day) $('#' + p + 'Day').value = it.day;
+    $('#' + p + 'Date').value = it.date || '';
+    $('#' + p + 'EndDate').value = it.endDate || '';
+    $('#' + p + 'Count').value = it.count || '';
+    $('#' + p + 'Submit').textContent = 'Save'; $('#' + p + 'Cancel').hidden = false;
+    $('#' + p + 'Name').focus();
+  }
+  function renderList(kind) {
+    const list = $('#list-' + kind), all = state.settings[kind];
+    $('#count-' + kind).textContent = all.length;
+    const q = $('#q-' + kind).value.trim().toLowerCase(), f = $('#f-' + kind).value;
+    const items = all.filter(it => {
+      if (q && !(it.name.toLowerCase().includes(q) || freqText(it).toLowerCase().includes(q) || catFor(kind, it).toLowerCase().includes(q) || String(it.amount).includes(q))) return false;
+      if (f === 'all') return true;
+      if (f.startsWith('cat:')) return catFor(kind, it) === f.slice(4);
+      if (f === 'active') return !isEnded(it);
+      if (f === 'ended') return isEnded(it);
+      if (f === 'once') return it.freq === 'once';
+      if (f === 'repeat') return it.freq !== 'once';
+      return true;
+    });
+    const filtered = q || f !== 'all';
+    const total = sum(items, x => x.amount);
+    $('#info-' + kind).textContent = !all.length ? '' : filtered
+      ? `Showing ${items.length} of ${all.length} · ${money(total)} each time`
+      : `${all.length} ${kind === 'bills' ? 'payment' : 'income item'}${all.length === 1 ? '' : 's'}${all.length > 4 ? ' · scroll to see all' : ''}`;
+    if (!all.length) { list.innerHTML = `<p class="empty">${KINDS[kind].empty}</p>`; return; }
+    if (!items.length) { list.innerHTML = `<p class="empty">Nothing matches. <button type="button" class="ghost" data-act="clearFilter" data-kind="${kind}">Clear search and filter</button></p>`; return; }
+    list.innerHTML = items.map(it => {
+      const ended = isEnded(it);
+      const cats = `<div class="cats ${kind === 'incomes' ? 'inc' : ''}" role="group" aria-label="Category for ${esc(it.name)}">${CATS_BY[kind].map(c => `<button type="button" data-act="cat" data-kind="${kind}" data-id="${it.id}" data-cat="${c}" aria-pressed="${catFor(kind, it) === c}" ${catFor(kind, it) === c ? `style="background:${colorOf(kind, c)};color:${textOn(colorOf(kind, c))}"` : ''}>${c}</button>`).join('')}</div>`;
+      return `<div class="item ${ended ? 'ended' : ''} ${cats ? 'has-cats' : ''}">
+        <div style="min-width:0"><div class="name">${cdot(itemColor(kind, it))}${esc(it.name)}${ended ? ' <span class="chip">Ended</span>' : ''}</div><div class="small muted">${freqText(it)}</div></div>
+        ${cats}
+        <b class="num ${kind === 'incomes' ? 'inc' : ''}">${kind === 'incomes' ? '+' : ''}${money(+it.amount)}</b>
+        <div class="seg"><button type="button" class="ghost" data-act="edit" data-kind="${kind}" data-id="${it.id}">Edit</button><button type="button" class="ghost" data-act="delItem" data-kind="${kind}" data-id="${it.id}" aria-label="Delete ${esc(it.name)}">✕</button></div>
+      </div>`;
+    }).join('');
+  }
+  function fillSettingsInputs() {
+    const p = $('#pay'), d = $('#payday');
+    if (document.activeElement !== p) p.value = state.settings.weeklyPay ?? '';
+    if (document.activeElement !== d) d.value = state.settings.payday ?? '';
+    $('#payFreq').value = payFreq();
+    const a = anchor(), f = payFreq(), wd = fmtD(a, { weekday: 'long' });
+    const sd = semiDays();
+    const how = {
+      weekly: `You get paid every ${wd}, so each pay week runs ${wd} through ${fmtD(addDays(a, 6), { weekday: 'long' })}.`,
+      biweekly: `You get paid every other ${wd}, so each pay period is 14 days, ${wd} through the second ${fmtD(addDays(a, 6), { weekday: 'long' })}.`,
+      semimonthly: `You get paid on the ${ord(sd[0])} and the ${ord(sd[1])} of each month (the last day in shorter months). Each pay period runs until the day before the next one.`,
+      monthly: `You get paid on the ${ord(a.getDate())} of each month (the last day in shorter months). Each pay period runs one month.`,
+    }[f];
+    $('#paydayHint').textContent = state.settings.payday ? how : 'Pick a payday as your starting day. ' + how;
+    $('#payLbl').textContent = f === 'weekly' ? 'Weekly take-home pay' : 'Take-home pay per paycheck';
+    $('#startAlert').innerHTML = state.settings.payday
+      ? `<span aria-hidden="true">⚑</span> All calculations start on ${esc(longD(parse(state.settings.payday)))}. Left over, Together and every total count from here, and anything before it counts as $0.`
+      : '<span aria-hidden="true">⚑</span> All calculations start on this day. Left over, Together and every total count from here, and anything before it counts as $0.';
+  }
+  $('#pay').addEventListener('input', e => {
+    const v = e.target.value.trim();
+    state.settings.weeklyPay = v === '' ? null : round2(Math.max(0, +v));
+    render(); queueSave();
+  });
+  $('#payFreq').addEventListener('change', e => {
+    state.settings.payFreq = e.target.value;
+    state.viewStart = null; fillSettingsInputs(); render(); queueSave();
+  });
+  $('#payday').addEventListener('change', e => {
+    state.settings.payday = e.target.value || null;
+    state.viewStart = null; fillSettingsInputs(); render(); queueSave();
+  });
+  document.addEventListener('input', e => { if (e.target.matches('input[type=date]')) e.target.setCustomValidity(''); });
+  buildForm('bills'); buildForm('incomes');
+  for (const k of ['bills', 'incomes']) {
+    $('#q-' + k).addEventListener('input', () => renderList(k));
+    $('#f-' + k).addEventListener('change', () => renderList(k));
+  }
+  function showSubtab(tab, focus) {
+    for (const k of ['bills', 'incomes']) {
+      const on = k === tab, b = $('#st-' + k);
+      b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1;
+      $('#pane-' + k).hidden = !on;
+    }
+    if (focus) $('#st-' + tab).focus();
+  }
+  $('.subtabs').addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); showSubtab($('#st-bills').getAttribute('aria-selected') === 'true' ? 'incomes' : 'bills', true); }
+  });
+
+  // ---------- compact Pay & bills bar (shown once the full section scrolls away) ----------
+  let qKind = 'bills';
+  const QDEF = { bills: 'monthly', incomes: 'once' };
+  function setQKind(k) {
+    qKind = k;
+    document.querySelectorAll('[data-qkind]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.qkind === k)));
+    $('#qFreq').innerHTML = KINDS[k].freqs.map(f => `<option value="${f}" ${f === QDEF[k] ? 'selected' : ''}>${FREQ[f]}</option>`).join('');
+    $('#qName').placeholder = KINDS[k].placeholder;
+  }
+  setQKind('bills');
+  $('#qDate').value = iso(today());
+  document.querySelectorAll('[data-qkind]').forEach(b => b.addEventListener('click', () => { setQKind(b.dataset.qkind); $('#qName').focus(); }));
+  const setQOpen = open => { $('#qbar').classList.toggle('open', open); $('#qToggle').setAttribute('aria-expanded', String(open)); $('#qToggle').textContent = open ? 'Close' : '+ Add'; };
+  $('#qToggle').addEventListener('click', () => { const open = !$('#qbar').classList.contains('open'); setQOpen(open); if (open) $('#qName').focus(); });
+  $('#qform').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('#qName').value.trim(), amount = round2(Math.max(0, +$('#qAmt').value || 0)), freq = $('#qFreq').value, date = $('#qDate').value;
+    if (!name || !date) return;
+    const it = { id: uid(), name, amount, freq, ends: 'never', cat: CATS_BY[qKind][0] };
+    if (freq === 'monthly') it.day = parse(date).getDate(); else it.date = date;
+    state.settings[qKind].push(it);
+    render(); queueSave();
+    toast(`Added ${name} · ${freqText(it)}. Use the full form to set an end date.`);
+    $('#qName').value = ''; $('#qAmt').value = ''; $('#qName').focus();
+  });
+  function updateQSum() {
+    const s = state.settings, nb = s.bills.length, ni = s.incomes.length;
+    $('#qsum').textContent = `${s.weeklyPay ? money(+s.weeklyPay) + PAY_SHORT[payFreq()] + ' · ' : ''}${nb} payment${nb === 1 ? '' : 's'} · ${ni} income`;
+  }
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(([en]) => {
+      const show = !en.isIntersecting && en.boundingClientRect.top < 0;
+      $('#qbar').hidden = !show;
+      document.body.classList.toggle('qbar-on', show);
+      if (!show) setQOpen(false);
+    }, { rootMargin: '-56px 0px 0px 0px' }).observe($('#settings'));
+  }
+
+  // ---------- Colors window: one color per payment category / income type ----------
+  function renderColorDlg() {
+    const row = (kind, c) => {
+      const col = colorOf(kind, c);
+      return `<label class="colorrow"><input type="color" value="${col}" data-ckind="${kind}" data-ccat="${esc(c)}" aria-label="${esc(c)} color">${esc(c)}
+        <span class="sample" style="background:color-mix(in srgb, ${col} 20%, var(--surface));box-shadow:inset 3px 0 0 ${col}">$50</span></label>`;
+    };
+    $('#colorBills').innerHTML = BILL_CATS.map(c => row('bills', c)).join('');
+    $('#colorIncomes').innerHTML = INC_CATS.map(c => row('incomes', c)).join('');
+  }
+  $('#btnColors').addEventListener('click', () => { renderColorDlg(); $('#colorDlg').showModal(); });
+  $('#colorDone').addEventListener('click', () => $('#colorDlg').close());
+  $('#colorReset').addEventListener('click', () => { state.settings.colors = {}; renderColorDlg(); render(); queueSave(); });
+  let colorTimer = null;
+  $('#colorDlg').addEventListener('input', e => {
+    const inp = e.target; if (!inp.matches('input[type=color]') || !HEX.test(inp.value)) return;
+    if (!state.settings.colors) state.settings.colors = {};
+    state.settings.colors[inp.dataset.ckind + ':' + inp.dataset.ccat] = inp.value.toLowerCase();
+    const s = inp.parentElement.querySelector('.sample');
+    s.style.background = `color-mix(in srgb, ${inp.value} 20%, var(--surface))`; s.style.boxShadow = `inset 3px 0 0 ${inp.value}`;
+    clearTimeout(colorTimer); colorTimer = setTimeout(() => { render(); queueSave(); }, 120);   // dragging the picker fires many events
+  });
+
+  // ---------- color theme (per device; Light by default) ----------
+  function currentTheme() { try { return localStorage.getItem('payweek.theme') || 'light'; } catch { return 'light'; } }
+  function applyTheme(th) {
+    if (th === 'auto') document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme', th);
+    try { localStorage.setItem('payweek.theme', th); } catch {}
+    document.querySelectorAll('[data-themeopt]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeopt === th)));
+  }
+  document.querySelectorAll('[data-themeopt]').forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.themeopt)));
+  applyTheme(currentTheme());
+
+  // ---------- export / import (backups, and moving data between the web and desktop versions) ----------
+  async function exportData() {
+    const json = JSON.stringify({ app: 'payweek', version: 1, exportedAt: new Date().toISOString(), settings: state.settings, expenses: state.expenses.map(({ id, ...x }) => x) }, null, 2);
+    const filename = `payweek-backup-${iso(today())}.json`;
+    try {
+      const dl = window.claude && typeof window.claude.use === 'function' ? await window.claude.use('downloads') : null;
+      if (dl) { await dl.save({ filename, data: json }); toast('Backup saved'); return; }
+    } catch (e) {
+      if (e && e.code === 'declined') return;
+      if (e && e.code === 'rate_limited') { toast('A save window is already open.'); return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' })); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  }
+  let pendingImport = null;
+  async function readImport(file) {
+    let d = null;
+    try { d = JSON.parse(await file.text()); } catch {}
+    if (!d || d.app !== 'payweek' || !d.settings) { toast('That file isn’t a Payweek backup.'); return; }
+    pendingImport = d;
+    const s = d.settings, nb = (s.bills || []).length, ni = (s.incomes || []).length, ne = (d.expenses || []).length;
+    $('#impInfo').textContent = `Backup from ${d.exportedAt ? longD(new Date(d.exportedAt)) : 'an unknown date'}: ${nb} payment${nb === 1 ? '' : 's'}, ${ni} income item${ni === 1 ? '' : 's'}, ${ne} expense${ne === 1 ? '' : 's'}.`;
+    $('#impDlg').showModal();
+  }
+  async function applyImport(d) {
+    const exps = (d.expenses || []).filter(x => x && x.date && +x.amount > 0)
+      .map(x => ({ date: x.date, amount: round2(+x.amount), category: x.category || 'Other', note: x.note || '', createdAt: x.createdAt || Date.now() }));
+    state.settings = normSettings(d.settings);
+    state.viewStart = null; resetForm('bills'); resetForm('incomes');
+    if (backend.kind === 'db') {
+      setSaveState('Loading backup…');
+      for (const x of [...state.expenses]) await backend.remove('expenses', x.id);
+      for (const x of exps) await backend.add('expenses', x);
+    } else {
+      state.expenses = exps.map(x => ({ id: uid(), ...x }));
+    }
+    fillSettingsInputs(); render(); queueSave();
+    toast('Backup loaded');
+  }
+  $('#btnExport').addEventListener('click', () => exportData());
+  $('#btnImport').addEventListener('click', () => { $('#importFile').value = ''; $('#importFile').click(); });
+  $('#importFile').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (f) readImport(f); });
+  $('#impCancel').addEventListener('click', () => { pendingImport = null; $('#impDlg').close(); });
+  $('#impGo').addEventListener('click', async () => {
+    const d = pendingImport; pendingImport = null; $('#impDlg').close();
+    if (d) { try { await applyImport(d); } catch (err) { setSaveState('Couldn’t load the backup (' + (err && err.code || 'error') + ').'); } }
+  });
+
+  // ---------- compact "Left over, added up" bar at the bottom ----------
+  $('#lbar').addEventListener('click', () => $('#totals').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' }));
+  if ('IntersectionObserver' in window) {
+    new IntersectionObserver(([en]) => {
+      // show the bar while the full section is still below the screen
+      const show = !en.isIntersecting && en.boundingClientRect.top > 0;
+      $('#lbar').hidden = !show;
+      document.body.classList.toggle('lbar-on', show);
+    }, { rootMargin: '0px 0px -40px 0px' }).observe($('#totals'));
+  }
+
+  // ---------- views & actions ----------
+  const VIEWS = ['week', 'month', 'year', 'dashboard'];
+  function setView(v) { state.view = VIEWS.includes(v) ? v : 'week'; render(); }
+  function go(v) { if (location.hash !== '#' + v) location.hash = v; else setView(v); }
+  window.addEventListener('hashchange', () => setView(location.hash.slice(1)));
+  const scrollTop = () => $('#view').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+
+  document.addEventListener('click', e => {
+    const t = e.target.closest('[data-act]'); if (!t) return;
+    const act = t.dataset.act;
+    if (act === 'wk') { let s = state.viewStart ? periodStartFor(parse(state.viewStart)) : weekStartFor(today()); s = +t.dataset.n > 0 ? nextPeriodStart(s) : prevPeriodStart(s); state.viewStart = iso(s); render(); }
+    else if (act === 'wkNow') { state.viewStart = null; render(); }
+    else if (act === 'mo') { const d = new Date(state.month.y, state.month.m + +t.dataset.n, 1); state.month = { y: d.getFullYear(), m: d.getMonth() }; render(); }
+    else if (act === 'moNow') { const d = today(); state.month = { y: d.getFullYear(), m: d.getMonth() }; render(); }
+    else if (act === 'yr') { state.year += +t.dataset.n; render(); }
+    else if (act === 'yrNow') { state.year = today().getFullYear(); render(); }
+    else if (act === 'openWeek') {
+      state.viewStart = iso(periodStartFor(parse(t.dataset.day || t.dataset.s)));
+      if (t.dataset.day) state.expDate = t.dataset.day; // a day cell: log spending on that date
+      go('week'); setView('week'); // render now so the spending form exists
+      if (t.dataset.day) { const f = $('#expform'); if (f) { f.scrollIntoView({ block: 'center' }); $('#eAmt').focus({ preventScroll: true }); } }
+      else scrollTop();
+    }    else if (act === 'openMonth') { state.month = { y: t.dataset.y ? +t.dataset.y : state.year, m: +t.dataset.m }; go('month'); scrollTop(); }
+    else if (act === 'openYear') { state.year = +t.dataset.y; go('year'); scrollTop(); }
+    else if (act === 'delExp') { backend.remove('expenses', t.dataset.id).catch(err => setSaveState('Couldn’t delete (' + (err.code || 'error') + ')')); }
+    else if (act === 'edit') { showSubtab(t.dataset.kind); editItem(t.dataset.kind, t.dataset.id); $('#form-' + t.dataset.kind).scrollIntoView({ block: 'center' }); }
+    else if (act === 'openSettings') { $('#settings').scrollIntoView({ block: 'start' }); const k = $('#st-incomes').getAttribute('aria-selected') === 'true' ? 'i' : 'b'; $('#' + k + 'Name').focus({ preventScroll: true }); }
+    else if (act === 'editOcc') openOcc(t.dataset.kind, t.dataset.id, t.dataset.key, t.dataset.date);
+    else if (act === 'subtab') showSubtab(t.dataset.tab);
+    else if (act === 'clearFilter') { const k = t.dataset.kind; $('#q-' + k).value = ''; $('#f-' + k).value = 'all'; renderList(k); }
+    else if (act === 'cat') {
+      const b = state.settings[t.dataset.kind || 'bills'].find(x => x.id === t.dataset.id); if (!b || b.cat === t.dataset.cat) return;
+      b.cat = t.dataset.cat; render(); queueSave();
+    }
+    else if (act === 'delItem') {
+      if (t.dataset.confirm !== '1') { t.dataset.confirm = '1'; t.textContent = 'Delete?'; setTimeout(() => { if (t.isConnected) { t.dataset.confirm = ''; t.textContent = '✕'; } }, 3000); return; }
+      const kind = t.dataset.kind;
+      state.settings[kind] = state.settings[kind].filter(b => b.id !== t.dataset.id);
+      for (const m of ['moves', 'edits']) for (const k of Object.keys(state.settings[m] || {})) if (k.startsWith(t.dataset.id + '@')) delete state.settings[m][k];
+      if (state.editing[kind] === t.dataset.id) resetForm(kind);
+      render(); queueSave();
+    }
+    else if (act === 'goSettings') { $('#settings').scrollIntoView({ block: 'start' }); (state.settings.weeklyPay == null ? $('#pay') : $('#payday')).focus(); }
+  });
+  // ----- drag & drop in the month calendar -----
+  let drag = null, overCell = null;
+  const setOver = c => { if (overCell === c) return; if (overCell) overCell.classList.remove('over'); overCell = c; if (c) c.classList.add('over'); };
+  document.addEventListener('dragstart', e => {
+    const p = e.target.closest && e.target.closest('[data-drag]'); if (!p) return;
+    drag = { kind: p.dataset.drag, id: p.dataset.id, key: p.dataset.key, date: p.dataset.date };
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', p.dataset.key); } catch {}
+    p.classList.add('dragging');
+  });
+  document.addEventListener('dragend', e => {
+    const p = e.target.closest && e.target.closest('[data-drag]'); if (p) p.classList.remove('dragging');
+    drag = null; setOver(null);
+  });
+  document.addEventListener('dragover', e => {
+    if (!drag) return;
+    const c = e.target.closest && e.target.closest('.cal .cell[data-day]');
+    setOver(c);
+    if (c) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+  });
+  document.addEventListener('drop', e => {
+    if (!drag) return;
+    const c = e.target.closest && e.target.closest('.cal .cell[data-day]');
+    const dr = drag; drag = null; setOver(null);
+    if (!c) return;
+    e.preventDefault();
+    moveItem(dr, c.dataset.day);
+  });
+  function moveItem(dr, to) {
+    if (!to || to === dr.date) return;
+    const it = state.settings[dr.kind].find(x => x.id === dr.id); if (!it) return;
+    const s = state.settings;
+    if (it.freq === 'once') {
+      const oldK = it.id + '@' + it.date, newK = it.id + '@' + to;
+      if (s.paid[oldK]) { s.paid[newK] = true; delete s.paid[oldK]; }
+      it.date = to;
+      toast(`Moved ${it.name} to ${short(parse(to))}`);
+    } else {
+      const from = dr.key.slice(dr.key.lastIndexOf('@') + 1);
+      if (!s.moves) s.moves = {};
+      if (to === from) { delete s.moves[dr.key]; toast(`${it.name} is back on ${short(parse(to))}`); }
+      else { s.moves[dr.key] = to; toast(`Moved payment: ${it.name}, ${short(parse(from))} → ${short(parse(to))}`); }
+    }
+    render(); queueSave();
+  }
+  // ----- edit one payment/income of a series -----
+  let occ = null;
+  function openOcc(kind, id, key, date) {
+    const it = state.settings[kind].find(x => x.id === id); if (!it) return;
+    const from = key.slice(key.lastIndexOf('@') + 1);
+    const o = (state.settings.edits || {})[key] || {};
+    const once = it.freq === 'once', noun = kind === 'bills' ? 'payment' : 'income';
+    occ = { kind, id, key, from, once };
+    $('#occTitle').textContent = `Edit ${noun}: ${it.name}`;
+    $('#occEyebrow').textContent = once ? 'One-time ' + noun : 'Just this one';
+    $('#occInfo').textContent = once ? 'This happens once, so changes apply to the item itself.' : `${freqText(it)} · this one is from ${longD(parse(from))}`;
+    $('#oName').value = o.name || it.name;
+    $('#oAmt').value = o.amount != null ? o.amount : it.amount;
+    $('#oDate').value = date;
+    $('#oSkip').checked = !!o.skip;
+    $('#oSkipLbl').hidden = once; $('#oReset').hidden = once;
+    $('#occNote').textContent = once ? '' : `Usually ${money(+it.amount)} on ${short(parse(from))}. The rest of the series stays the same.`;
+    $('#occDlg').showModal(); $('#oAmt').focus(); $('#oAmt').select();
+  }
+  $('#occDlg').addEventListener('close', () => { occ = null; });
+  $('#oCancel').addEventListener('click', () => $('#occDlg').close());
+  $('#oReset').addEventListener('click', () => {
+    if (!occ) return;
+    const s = state.settings;
+    if (s.edits) delete s.edits[occ.key];
+    if (s.moves) delete s.moves[occ.key];
+    $('#occDlg').close(); toast('Back to the usual for that date'); render(); queueSave();
+  });
+  $('#occForm').addEventListener('submit', e => {
+    e.preventDefault(); if (!occ) return;
+    const s = state.settings, it = s[occ.kind].find(x => x.id === occ.id); if (!it) return;
+    const name = $('#oName').value.trim() || it.name, amount = round2(+$('#oAmt').value || 0), date = $('#oDate').value;
+    if (!date) return;
+    if (occ.once) {
+      const oldK = it.id + '@' + it.date, newK = it.id + '@' + date;
+      if (oldK !== newK && s.paid[oldK]) { s.paid[newK] = true; delete s.paid[oldK]; }
+      if (name !== it.name || amount !== round2(+it.amount)) it.edited = true; // show ✎ in the calendar
+      it.name = name; it.amount = amount; it.date = date;
+      toast(`Saved ${name}`);
+    } else {
+      if (!s.edits) s.edits = {}; if (!s.moves) s.moves = {};
+      const o = {};
+      if (name !== it.name) o.name = name;
+      if (amount !== round2(+it.amount)) o.amount = amount;
+      if ($('#oSkip').checked) o.skip = true;
+      if (Object.keys(o).length) s.edits[occ.key] = o; else delete s.edits[occ.key];
+      if (date === occ.from) delete s.moves[occ.key]; else s.moves[occ.key] = date;
+      toast(o.skip ? `Skipping ${it.name} on ${short(parse(date))}` : `Changed ${name} for ${short(parse(date))} only`);
+    }
+    $('#occDlg').close(); render(); queueSave();
+  });
+
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  }
+
+  document.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-act="openWeek"], tr[data-act]')) { e.preventDefault(); e.target.click(); }
+  });
+  document.addEventListener('change', e => {
+    if (e.target.matches('input[data-act="paid"]')) {
+      const k = e.target.dataset.key;
+      if (e.target.checked) state.settings.paid[k] = true; else delete state.settings.paid[k];
+      render(); queueSave();
+    }
+  });
+  document.addEventListener('submit', e => {
+    if (e.target.id !== 'expform') return;
+    e.preventDefault();
+    const amount = round2(+$('#eAmt').value || 0); if (amount <= 0) return;
+    const x = { date: $('#eDate').value, amount, category: $('#eCat').value, note: $('#eNote').value.trim(), createdAt: Date.now() };
+    if (!x.date) return;
+    backend.add('expenses', x).catch(err => setSaveState(err && err.code === 'quota_exceeded' ? 'Storage is full. Delete some old expenses to add more.' : 'Couldn’t log that expense. Try again.'));
+  });
+
+  state.view = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'week';
+  render();
+  initBackend();
+})();
+</script>
+
+<footer class="sitefoot"><div class="sitefoot-in">
+  <span>Payweek · your data stays in this browser. Use Export to keep a backup.</span>
+  <span><a href="index.html">Home</a> · <a href="index.html#how">How it works</a></span>
+</div></footer>
+</body>
+</html>
