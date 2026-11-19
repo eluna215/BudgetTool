@@ -266,6 +266,11 @@ th.r, td.r { text-align: right; white-space: nowrap; }
 tbody tr { cursor: pointer; }
 tbody tr:hover td { background: var(--surface-2); }
 tr.past td { color: var(--muted); }
+tr.mrow td { background: var(--surface-2); font-weight: 600; border-top: 2px solid var(--line); color: var(--ink); }
+tr.mrow td .mlink { font-family: var(--display); font-size: 1rem; color: var(--accent); }
+tr.mrow:hover td { background: color-mix(in srgb, var(--accent) 10%, var(--surface-2)); }
+tr.mrow.now td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+tr.mrow td.neg { color: var(--neg); }
 tr.current td { background: var(--accent-soft); }
 tr.current td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 td.wk, td.dates { white-space: nowrap; }
@@ -284,7 +289,32 @@ table.lefttable { min-width: 560px; }
 .yearsum b { font-family: var(--display); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .note-bar { font-size: 0.82rem; color: var(--muted); background: var(--surface-2); border-radius: 8px; padding: 8px 12px; }
 
-.months { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.months { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 10px; }
+.ycal { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 8px 8px 10px; min-width: 0; }
+.ycal.now { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.ycal .yhead { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; width: 100%; padding: 4px 6px 6px; border-radius: 8px; text-align: left; }
+.ycal .yhead:hover { background: var(--surface-2); }
+.ycal .yhead .mname { font-weight: 600; }
+.ycal .yhead b { font-family: var(--display); font-variant-numeric: tabular-nums; font-size: 0.95rem; }
+.ycal .yhead b.neg { color: var(--neg); }
+.ycal .ygrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.ycal .ywd { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); text-align: center; padding: 2px 0 4px; }
+.ycal .yd { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; height: 34px; padding-top: 3px; border-radius: 6px; font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.ycal button.yd:hover { background: var(--surface-2); }
+.ycal .yd.blank { visibility: hidden; }
+.ycal .yd.pre { color: var(--muted); opacity: .45; cursor: default; }
+.ycal .yd.ypay { font-weight: 700; color: var(--pos); }
+.ycal button.yd, .ycal button.yhead { border: 0; background: none; box-shadow: none; margin: 0; min-height: 0; color: inherit; font: inherit; cursor: pointer; }
+.ycal button.yd { font-size: 0.78rem; }
+.ycal button.yd.ypay { color: var(--pos); font-weight: 700; }
+.ycal .yd .n { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 50%; }
+.ycal .yd.today .n { background: var(--accent); color: var(--accent-ink); }
+.ycal .dots { display: flex; gap: 2px; height: 5px; }
+.ycal .dots i { width: 5px; height: 5px; border-radius: 50%; display: block; }
+.ycal .mbar { height: 4px; border-radius: 3px; background: var(--line); overflow: hidden; display: flex; margin: 8px 4px 0; }
+.ycal .mbar i { display: block; height: 100%; }
+.ylegend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.78rem; color: var(--muted); margin: 0 0 8px; }
+.ylegend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
 .mcard { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--r); background: var(--surface-2); border: 1px solid var(--line); min-width: 0; }
 .mcard:hover { border-color: var(--accent); background: var(--surface-2); }
 .mcard.now { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -370,7 +400,6 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
 @media (max-width: 900px) {
   .grid2, .settings { grid-template-columns: minmax(0, 1fr); }
-  .months { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -378,7 +407,6 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   .miniform .wide, .itemform .span2 { grid-column: 1 / -1; }
   .panel { padding: 16px; }
   .stat b { font-size: 1.25rem; }
-  .months { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   nav.tabs { gap: 4px; }
   nav.tabs a { font-size: 1rem; padding: 12px 4px; }
 }
@@ -439,7 +467,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         <input id="payday" type="date" aria-describedby="startAlert paydayHint">
       </label>
       <div class="startnote">
-        <p class="startalert" id="startAlert"><span aria-hidden="true">⚑</span> All calculations start on this day. Left over, Together and every total count from here, and anything before it counts as $0.</p>
+        <p class="startalert" id="startAlert"><span aria-hidden="true">⚑</span> All calculations start on this day. Left over, Net and every total count from here, and anything before it counts as $0.</p>
         <p class="muted small" id="paydayHint">Each pay week runs from payday through the day before your next payday.</p>
       </div>
     </div>
@@ -932,13 +960,13 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     const nBad = badW.length + badM.length + badY.length;
     const flagGroup = (title, items, html) => items.length ? `<div><p class="eyebrow">${title} – ${items.length}</p><div class="flaglist">${items.map(html).join('')}</div></div>` : '';
     const alerts = nBad ? `<div class="alerts" role="alert">
-        <h3><span aria-hidden="true">⚠</span> "Together" goes below $0 – ${nBad} time${nBad === 1 ? '' : 's'}</h3>
+        <h3><span aria-hidden="true">⚠</span> "Net" goes below $0 – ${nBad} time${nBad === 1 ? '' : 's'}</h3>
         <p class="small">Counting from ${longD(st)} through ${longD(horizon)}. Select one to open it.</p>
         ${flagGroup(isWeekly() ? 'Pay weeks' : 'Pay periods', badW, x => `<button type="button" class="flag" data-act="openWeek" data-s="${iso(x.ws)}">${spanTxt(x.ws, x.we)}${x.ws.getFullYear() !== t.getFullYear() ? ', ' + x.ws.getFullYear() : ''} <span>·</span> ${money(x.v)}</button>`)}
         ${flagGroup('Months', badM, x => `<button type="button" class="flag" data-act="openMonth" data-y="${x.d.getFullYear()}" data-m="${x.d.getMonth()}">${fmtD(x.d, { month: 'short', year: 'numeric' })} <span>·</span> ${money(x.v)}</button>`)}
         ${flagGroup('Years', badY, x => `<button type="button" class="flag" data-act="openYear" data-y="${x.y}">${x.y} <span>·</span> ${money(x.v)}</button>`)}
       </div>`
-      : `<div class="alerts ok"><h3><span aria-hidden="true">✓</span> "Together" stays at $0 or above</h3><p class="small">Checked every ${PN()}, month and year from ${longD(st)} through ${longD(horizon)}.</p></div>`;
+      : `<div class="alerts ok"><h3><span aria-hidden="true">✓</span> "Net" stays at $0 or above</h3><p class="small">Checked every ${PN()}, month and year from ${longD(st)} through ${longD(horizon)}.</p></div>`;
 
     // per-date changes (moves, edits, skips)
     const keys = [...new Set([...Object.keys(s.moves || {}), ...Object.keys(s.edits || {})])];
@@ -970,7 +998,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         <p class="sub">Your pay, payments, income, one-time changes and logged spending, all in one place. Select a row to open or edit it.</p></div></div>
       ${alerts}
       <div class="dgrid">
-        <div class="card full"><div class="card-head"><h3>"Together" each ${isWeekly() ? 'pay week' : 'pay period'}</h3><span class="small muted">Red dots are below $0</span></div>
+        <div class="card full"><div class="card-head"><h3>"Net" each ${isWeekly() ? 'pay week' : 'pay period'}</h3><span class="small muted">Red dots are below $0</span></div>
           <div class="chart" id="chTogether"></div></div>
         <div class="card full"><div class="card-head"><h3>Money in vs. out each ${isWeekly() ? 'pay week' : 'pay period'}</h3>
           <div class="clegend"><span><i style="background:var(--pos)"></i>Income</span><span><i style="background:var(--bills)"></i>Payments + spent</span><span><i style="background:repeating-linear-gradient(90deg,var(--ink) 0 4px,transparent 4px 6px)"></i>Left over</span></div></div>
@@ -995,7 +1023,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
             <td>${short(parse(x.date))}, ${parse(x.date).getFullYear()}</td><td>${esc(x.category)}</td><td class="small muted">${esc(x.note || '')}</td><td class="r">${money(+x.amount)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">Nothing logged yet.</td></tr>'}</tbody></table></div></div>
       </div>`;
     if (chartRO) chartRO.disconnect();
-    lineChart($('#chTogether'), { points: pts, series: [{ key: 'together', name: 'Together', color: 'var(--accent)' }], negKey: 'together', label: `Together for each pay week from ${longD(st)}; ${badW.length} weeks below zero` });
+    lineChart($('#chTogether'), { points: pts, series: [{ key: 'together', name: 'Net', color: 'var(--accent)' }], negKey: 'together', label: `Net for each pay week from ${longD(st)}; ${badW.length} weeks below zero` });
     lineChart($('#chFlow'), { points: pts, series: [{ key: 'income', name: 'Income', color: 'var(--pos)' }, { key: 'out', name: 'Payments + spent', color: 'var(--bills)' }, { key: 'left', name: 'Left over', color: 'var(--ink)', dash: true }], negKey: 'left', label: 'Income, payments plus spending, and left over for each pay week' });
   }
 
@@ -1075,7 +1103,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
   // Lines under each Left over figure: the previous period's left over, and the running "Together" total
   const carry = (label, prev, together) => `<div class="carry">
       <span>${label} left: <strong class="${prev < 0 ? 'neg' : ''}">${money(prev)}</strong></span>
-      ${together == null ? '' : `<span title="Every left over added up since ${longD(trackStart())}">Together: <strong class="${together < 0 ? 'neg' : ''}">${money(together)}</strong></span>`}</div>`;
+      ${together == null ? '' : `<span title="Every left over added up since ${longD(trackStart())}">Net: <strong class="${together < 0 ? 'neg' : ''}">${money(together)}</strong></span>`}</div>`;
   const yearFirstWeek = Y => { const j = new Date(Y, 0, 1); let s = periodStartFor(j); if (iso(s) < iso(j)) s = nextPeriodStart(s); return s; };
   function yearLeft(Y) { let s = yearFirstWeek(Y), t = 0; while (s.getFullYear() === Y) { t += week(s).left; s = nextPeriodStart(s); } return round2(t); }
   // Together through any date (used by the month calendar's 7-day rows)
@@ -1270,7 +1298,7 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         <span>In <span style="color:var(--pos)">${money(w.income)}</span></span>
         <span>Due ${money(w.bills)}</span>
         <b class="${w.left < 0 ? 'neg' : ''}">Left ${money(w.left)}</b>
-        ${(() => { const tog = isWeekly() ? cumWeek(ws) : cumThrough(w.end); return tog == null ? '' : `<span class="wcarry"><b class="${tog < 0 ? 'neg' : ''}">Together ${money(tog)}</b></span>`; })()}</div>`);
+        ${(() => { const tog = isWeekly() ? cumWeek(ws) : cumThrough(w.end); return tog == null ? '' : `<span class="wcarry"><b class="${tog < 0 ? 'neg' : ''}">Net ${money(tog)}</b></span>`; })()}</div>`);
       ws = addDays(ws, 7);
     }
     const isNow = y === t.getFullYear() && m === t.getMonth();
@@ -1304,12 +1332,25 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     const yc = counted(new Date(Y, 0, 1), new Date(Y, 11, 31)); // same figures as "Left over, added up"
     const navYear = navSeg('yr', 'yrNow', Y === t.getFullYear(), `‹ ${Y - 1}`, `${Y === t.getFullYear() ? 'This year · ' : ''}${Y}`, `${Y + 1} ›`, 'Previous year', 'Next year', !!startDay() && Y <= startDay().getFullYear());
     let start = yearFirstWeek(Y);
-    const rows = []; let n = 1;
+    const rows = []; let n = 1, curM = -1;
     const tot = { income: 0, bills: 0, spent: 0, left: 0 };
     while (start.getFullYear() === Y) {
       const w = week(start);
       for (const k in tot) tot[k] += w[k];
-      const runL = round2(tot.left);
+      if (start.getMonth() !== curM) { // a month heading row before the first period that starts in it
+        curM = start.getMonth();
+        const mf = new Date(Y, curM, 1), mdm = counted(mf, new Date(Y, curM + 1, 0)), mNet = cumMonth(Y, curM);
+        const mNow = Y === t.getFullYear() && curM === t.getMonth();
+        rows.push(`<tr class="mrow ${mNow ? 'now' : ''}" tabindex="0" data-act="openMonth" data-m="${curM}" title="Open ${fmtD(mf, { month: 'long' })} in Month view">
+          <td colspan="2"><span class="mlink">${fmtD(mf, { month: 'long' })} <span aria-hidden="true">›</span></span></td>
+          <td class="r">${money(mdm.income)}</td>
+          <td class="small muted">${mdm.payments.length} payment${mdm.payments.length === 1 ? '' : 's'} in ${fmtD(mf, { month: 'short' })}</td>
+          <td class="r">${money(mdm.bills)}</td>
+          <td class="r">${mdm.spent ? money(mdm.spent) : '—'}</td>
+          <td class="r ${mdm.left < 0 ? 'neg' : ''}">${money(mdm.left)}</td>
+          <td class="r ${mNet != null && mNet < 0 ? 'neg' : ''}">${mNet == null ? '—' : money(mNet)}</td></tr>`);
+      }
+      const runL = cumWeek(start); // Net: every left over added up since the starting day
       const cls = [w.e < tIso ? 'past' : '', (w.s <= tIso && tIso <= w.e) ? 'current' : ''].join(' ');
       const pays = w.payments.length ? '<div class="pays">' + w.payments.map(p => `<span class="pay tinted ${state.settings.paid[p.key] ? 'done' : ''} ${p.moved ? 'moved' : ''}" style="--pc:${itemColor('bills', p.bill)}">${esc(p.bill.name)} ${money(+p.bill.amount)} <em>${wkday(p.d)} ${short(p.d)}${p.moved ? ' · moved' : ''}</em></span>`).join('') + '</div>' : '<span class="muted">—</span>';
       rows.push(`<tr class="${cls}" tabindex="0" data-act="openWeek" data-s="${w.s}">
@@ -1320,20 +1361,45 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
         <td class="r">${money(w.bills)}</td>
         <td class="r">${w.spent ? money(w.spent) : '<span class="muted">—</span>'}</td>
         <td class="r left ${w.left < 0 ? 'neg' : ''}">${money(w.left)}</td>
-        <td class="r ${runL < 0 ? 'neg' : ''}">${money(runL)}</td></tr>`);
+        <td class="r ${runL != null && runL < 0 ? 'neg' : ''}">${runL == null ? '<span class="muted">—</span>' : money(runL)}</td></tr>`);
       start = nextPeriodStart(start); n++;
     }
     const months = [];
+    const st0 = state.settings.payday || '';
+    const payAmt = +state.settings.weeklyPay || 0;
+    const wd0 = calRowStart(new Date(Y, 0, 1)).getDay(); // same first weekday as the Month view
+    const wdHeads = Array.from({ length: 7 }, (_, i) => `<span class="ywd">${fmtD(new Date(2024, 0, 7 + ((wd0 + i) % 7)), { weekday: 'narrow' })}</span>`).join('');
     for (let m = 0; m < 12; m++) {
-      const md = counted(new Date(Y, m, 1), new Date(Y, m + 1, 0));
+      const first = new Date(Y, m, 1), last = new Date(Y, m + 1, 0);
+      const md = counted(first, last);
+      const r = range(first, last); // already skips days before the starting day
       const tt = Math.max(md.income, md.bills + md.spent, 1);
       const now = Y === t.getFullYear() && m === t.getMonth();
-      months.push(`<button type="button" class="mcard ${now ? 'now' : ''}" data-act="openMonth" data-m="${m}">
-        <span class="mname">${fmtD(new Date(Y, m, 1), { month: 'long' })}</span>
-        <b class="${md.left < 0 ? 'neg' : ''}">${money(md.left)}</b>
-        <span class="small muted">In ${moneyShort(md.income)} · Out ${moneyShort(md.bills + md.spent)}</span>
-        <span class="mbar"><i style="width:${(md.bills / tt * 100).toFixed(1)}%;background:var(--bills)"></i><i style="width:${(md.spent / tt * 100).toFixed(1)}%;background:var(--spent)"></i></span>
-      </button>`);
+      const days = [];
+      for (let i = 0; i < (first.getDay() - wd0 + 7) % 7; i++) days.push('<span class="yd blank"></span>');
+      for (let d = new Date(first); d <= last; d = addDays(d, 1)) {
+        const di = iso(d), pre = st0 && di < st0;
+        const pay = !pre && payAmt && isPayday(d);
+        const bills = r.payments.filter(p => p.date === di), incs = r.extras.filter(x => x.date === di), sp = r.exps.filter(x => x.date === di);
+        const tip = [fmtD(d, { weekday: 'long', month: 'long', day: 'numeric' })];
+        if (pre) tip.push('Before your starting day');
+        if (pay) tip.push(`Payday +${money(payAmt)}`);
+        incs.forEach(x => tip.push(`+${money(+x.item.amount)} ${x.item.name}`));
+        bills.forEach(p => tip.push(`${p.bill.name} ${money(+p.bill.amount)}`));
+        if (sp.length) tip.push(`Spent ${money(sum(sp, x => x.amount))}`);
+        const dots = [...(incs.length ? [`<i style="background:var(--pos)"></i>`] : []),
+          ...bills.slice(0, 3).map(p => `<i style="background:${itemColor('bills', p.bill)}"></i>`),
+          ...(sp.length ? [`<i style="background:var(--spent)"></i>`] : [])].join('');
+        days.push(pre
+          ? `<span class="yd pre" title="${esc(tip.join('\n'))}"><span class="n">${d.getDate()}</span></span>`
+          : `<button type="button" class="yd ${pay ? 'ypay' : ''} ${di === tIso ? 'today' : ''}" data-act="openWeek" data-day="${di}" title="${esc(tip.join('\n'))}"><span class="n">${d.getDate()}</span><span class="dots">${dots}</span></button>`);
+      }
+      months.push(`<div class="ycal ${now ? 'now' : ''}">
+        <button type="button" class="yhead" data-act="openMonth" data-m="${m}" title="Open ${fmtD(first, { month: 'long' })} in Month view">
+          <span class="mname">${fmtD(first, { month: 'long' })}</span><b class="${md.left < 0 ? 'neg' : ''}">${money(md.left)}</b></button>
+        <div class="ygrid">${wdHeads}${days.join('')}</div>
+        <span class="mbar" title="In ${money(md.income)} · Out ${money(md.bills + md.spent)}"><i style="width:${(md.bills / tt * 100).toFixed(1)}%;background:var(--bills)"></i><i style="width:${(md.spent / tt * 100).toFixed(1)}%;background:var(--spent)"></i></span>
+      </div>`);
     }
     el.innerHTML = `
       <div class="panel-head">
@@ -1348,13 +1414,14 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
       </div>
       <div class="navrow">${navYear}</div>
       ${catStrip(yc.payments)}
+      <p class="ylegend"><span><b style="color:var(--pos)">Bold green</b> = payday</span><span><i style="background:var(--pos)"></i>Other income</span><span><i style="background:var(--bills)"></i>Payment (in its color)</span><span><i style="background:var(--spent)"></i>Spending</span><span>Select a day to open its ${PN()}, or a month name to open the month.</span></p>
       <div class="months">${months.join('')}</div>
       <div class="tablewrap"><table>
-        <thead><tr><th>#</th><th>Dates</th><th class="r">Income</th><th>Payments due</th><th class="r">Total due</th><th class="r">Spent</th><th class="r">Left over</th><th class="r">Running total</th></tr></thead>
+        <thead><tr><th>#</th><th>Dates</th><th class="r">Income</th><th>Payments due</th><th class="r">Total due</th><th class="r">Spent</th><th class="r">Left over</th><th class="r">Net</th></tr></thead>
         <tbody>${rows.join('')}</tbody>
-        <tfoot><tr><td></td><td>${rows.length} ${isWeekly() ? 'weeks' : 'pay periods'}</td><td class="r">${money(tot.income)}</td><td></td><td class="r">${money(tot.bills)}</td><td class="r">${money(tot.spent)}</td><td class="r ${tot.left < 0 ? 'neg' : ''}">${money(tot.left)}</td><td class="r ${tot.left < 0 ? 'neg' : ''}">${money(tot.left)}</td></tr></tfoot>
+        ${(() => { const yNet = cumYear(Y); return `<tfoot><tr><td></td><td>${n - 1} ${isWeekly() ? 'weeks' : 'pay periods'}</td><td class="r">${money(tot.income)}</td><td></td><td class="r">${money(tot.bills)}</td><td class="r">${money(tot.spent)}</td><td class="r ${tot.left < 0 ? 'neg' : ''}">${money(tot.left)}</td><td class="r ${yNet != null && yNet < 0 ? 'neg' : ''}">${yNet == null ? '—' : money(yNet)}</td></tr></tfoot>`; })()}
       </table></div>
-      <p class="note-bar">Left over = income (weekly pay + other income) − payments due − spending you logged.</p>
+      <p class="note-bar">Rows are grouped by the month each ${PN()} starts in. Select a month heading to open it in Month view. Left over = income (pay + other income) − payments due − spending you logged. Net = every left over added up since your starting day.</p>
       <div class="viewfoot">${navYear}</div>`;
   }
 
@@ -1481,8 +1548,8 @@ label.check input { width: 18px; height: 18px; accent-color: var(--accent); }
     $('#paydayHint').textContent = state.settings.payday ? how : 'Pick a payday as your starting day. ' + how;
     $('#payLbl').textContent = f === 'weekly' ? 'Weekly take-home pay' : 'Take-home pay per paycheck';
     $('#startAlert').innerHTML = state.settings.payday
-      ? `<span aria-hidden="true">⚑</span> All calculations start on ${esc(longD(parse(state.settings.payday)))}. Left over, Together and every total count from here, and anything before it counts as $0.`
-      : '<span aria-hidden="true">⚑</span> All calculations start on this day. Left over, Together and every total count from here, and anything before it counts as $0.';
+      ? `<span aria-hidden="true">⚑</span> All calculations start on ${esc(longD(parse(state.settings.payday)))}. Left over, Net and every total count from here, and anything before it counts as $0.`
+      : '<span aria-hidden="true">⚑</span> All calculations start on this day. Left over, Net and every total count from here, and anything before it counts as $0.';
   }
   $('#pay').addEventListener('input', e => {
     const v = e.target.value.trim();
